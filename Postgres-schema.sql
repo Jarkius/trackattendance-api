@@ -1,5 +1,4 @@
 -- one-time setup
-create extension if not exists "uuid-ossp";
 
 create table if not exists scans (
   id                bigserial primary key,
