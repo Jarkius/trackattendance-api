@@ -30,3 +30,6 @@ coverage/
 # OS artifacts
 .DS_Store
 Thumbs.db
+
+# Test scripts
+testscript/

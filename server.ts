@@ -21,7 +21,7 @@ const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
   max: 20,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 10000, // Increased for better reliability with Neon
 });
 
 const API_KEY = process.env.API_KEY;
@@ -52,16 +52,14 @@ const batchSchema = {
           type: "object",
           required: [
             "idempotency_key",
-            "event_id",
-            "device_id",
-            "employee_ref",
+            "badge_id",
+            "station_name",
             "scanned_at",
           ],
           properties: {
             idempotency_key: { type: "string", minLength: 8, maxLength: 128 },
-            event_id: { type: "string", minLength: 1, maxLength: 128 },
-            device_id: { type: "string", minLength: 1, maxLength: 128 },
-            employee_ref: { type: "string", minLength: 1, maxLength: 128 },
+            badge_id: { type: "string", minLength: 1, maxLength: 128 },
+            station_name: { type: "string", minLength: 1, maxLength: 128 },
             scanned_at: { type: "string", format: "date-time" }, // ISO8601
             meta: { type: ["object", "null"] },
           },
@@ -76,9 +74,8 @@ const batchSchema = {
 
 type ScanInput = {
   idempotency_key: string;
-  event_id: string;
-  device_id: string;
-  employee_ref: string;
+  badge_id: string;
+  station_name: string;
   scanned_at: string; // ISO8601
   meta?: Record<string, any> | null;
 };
@@ -100,17 +97,15 @@ app.post<BatchRequest>("/v1/scans/batch", { schema: batchSchema }, async (req, r
 
     // Build arrays for UNNEST
     const keys: string[] = [];
-    const eventIds: string[] = [];
-    const deviceIds: string[] = [];
-    const employees: string[] = [];
+    const badgeIds: string[] = [];
+    const stationNames: string[] = [];
     const scannedAts: Date[] = [];
     const metas: any[] = [];
 
     for (const ev of events) {
       keys.push(ev.idempotency_key);
-      eventIds.push(ev.event_id);
-      deviceIds.push(ev.device_id);
-      employees.push(ev.employee_ref);
+      badgeIds.push(ev.badge_id);
+      stationNames.push(ev.station_name);
 
       // Validate and parse date
       const date = new Date(ev.scanned_at);
@@ -124,15 +119,14 @@ app.post<BatchRequest>("/v1/scans/batch", { schema: batchSchema }, async (req, r
 
     const insertSql = `
       insert into scans
-        (idempotency_key, event_id, device_id, employee_ref, scanned_at, meta)
+        (idempotency_key, badge_id, station_name, scanned_at, meta)
       select *
       from unnest(
         $1::text[],
         $2::text[],
         $3::text[],
-        $4::text[],
-        $5::timestamptz[],
-        $6::jsonb[]
+        $4::timestamptz[],
+        $5::jsonb[]
       )
       on conflict (idempotency_key) do nothing
       returning idempotency_key
@@ -140,9 +134,8 @@ app.post<BatchRequest>("/v1/scans/batch", { schema: batchSchema }, async (req, r
 
     const res = await client.query(insertSql, [
       keys,
-      eventIds,
-      deviceIds,
-      employees,
+      badgeIds,
+      stationNames,
       scannedAts,
       metas,
     ]);

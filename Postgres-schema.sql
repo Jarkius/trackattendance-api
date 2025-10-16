@@ -3,15 +3,14 @@
 create table if not exists scans (
   id                bigserial primary key,
   idempotency_key   text        not null unique,     -- client-computed hash
-  event_id          text        not null,
-  device_id         text        not null,
-  employee_ref      text        not null,
-  scanned_at        timestamptz not null,
-  meta              jsonb,
+  station_name      text        not null,            -- scanning station location
+  badge_id          text        not null,            -- employee badge ID
+  scanned_at        timestamptz not null,            -- UTC timestamp
+  meta              jsonb,                           -- additional context (NO PII)
   created_at        timestamptz not null default now()
 );
 
-create index if not exists idx_scans_event_id      on scans (event_id);
-create index if not exists idx_scans_device_id     on scans (device_id);
-create index if not exists idx_scans_employee_ref  on scans (employee_ref);
+-- indexes for performance
+create index if not exists idx_scans_badge_id      on scans (badge_id);
+create index if not exists idx_scans_station_name  on scans (station_name);
 create index if not exists idx_scans_scanned_at    on scans (scanned_at);
