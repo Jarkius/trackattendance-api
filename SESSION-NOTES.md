@@ -219,8 +219,204 @@ scans:
 | `sl_l1_desc` | — | **NOT synced** (privacy) |
 | `position_desc` | — | **NOT synced** (privacy) |
 
+**Updated Schema (SQLite) - With Sync Tracking:**
+```sql
+scans:
+- id INTEGER (auto)
+- badge_id TEXT
+- station_name TEXT
+- scanned_at TEXT  -- Format: "2025-10-15T12:30:45Z" (UTC)
+- employee_full_name TEXT (nullable)
+- legacy_id TEXT (nullable)
+- sl_l1_desc TEXT (nullable)
+- position_desc TEXT (nullable)
+- sync_status TEXT DEFAULT 'pending'  -- NEW: pending/synced/failed
+- synced_at TEXT (nullable)           -- NEW: UTC timestamp when synced
+- sync_error TEXT (nullable)          -- NEW: Error message if sync failed
+```
+
 **Integration Status:**
 - ✅ Schema aligned
 - ✅ Timestamp format standardized (UTC)
 - ✅ Privacy-preserving design (no PII in cloud)
-- 🔄 Ready for sync module implementation
+- ✅ **Sync module implemented (Phase 1 - Manual Sync)**
+  - ✅ Database schema with sync tracking
+  - ✅ Sync service (`sync.py`) with connection test
+  - ✅ QWebChannel API methods (sync_now, get_sync_status)
+  - ✅ UI components (Sync Now button, status display)
+  - ⏳ **Pending: Integration testing with cloud API**
+  - 📋 Backlog: Background auto-sync scheduler
+
+---
+
+## Date: 2025-10-16
+
+## Cloud Sync Module Implementation (Phase 1)
+
+### ✅ Completed - Manual Sync with UI
+
+**Objective:** Implement manual cloud sync functionality with "Sync Now" button for testing before enabling automatic background sync.
+
+### Implementation Details
+
+#### 1. Database Schema Updates (`database.py`)
+
+**Added Sync Tracking Fields:**
+```python
+@dataclass(frozen=True)
+class ScanRecord:
+    id: int                          # Added for idempotency key generation
+    # ... existing fields ...
+    sync_status: str = "pending"     # NEW: pending/synced/failed
+    synced_at: Optional[str] = None  # NEW: UTC timestamp when synced
+    sync_error: Optional[str] = None # NEW: Error message if failed
+```
+
+**Schema Migration:**
+```sql
+ALTER TABLE scans ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'pending';
+ALTER TABLE scans ADD COLUMN synced_at TEXT;
+ALTER TABLE scans ADD COLUMN sync_error TEXT;
+CREATE INDEX idx_scans_sync_status ON scans(sync_status);
+```
+
+**New Methods:**
+- `fetch_pending_scans(limit=100)` - Get scans ready to sync
+- `mark_scans_as_synced(scan_ids)` - Update sync status to 'synced'
+- `mark_scans_as_failed(scan_ids, error)` - Mark failed with error message
+- `get_sync_statistics()` - Get counts for pending/synced/failed
+
+#### 2. Sync Service Module (`sync.py`) - NEW FILE
+
+**Purpose:** Handle communication with cloud API
+
+**Key Features:**
+- `test_connection()` - Tests `/healthz` endpoint (5 second timeout)
+- `sync_pending_scans()` - Uploads pending scans in batches
+- Automatic idempotency key generation: `{station}-{badge_id}-{id}`
+- Batch size: 100 scans per request
+- Network error handling with status tracking
+
+**API Configuration:**
+```python
+CLOUD_API_URL = "http://localhost:5000"
+CLOUD_API_KEY = "6541f2c7892b4e5287d50c2414d179f8"
+```
+
+**Payload Format:**
+```python
+{
+    "idempotency_key": "MainGate-101117-1234",
+    "badge_id": "101117",
+    "station_name": "Main Gate",
+    "scanned_at": "2025-10-16T03:55:17Z",
+    "meta": {
+        "matched": true,
+        "local_id": 1234
+    }
+}
+```
+
+#### 3. QWebChannel API Integration (`main.py`)
+
+**New Methods Added to `Api` class:**
+```python
+@pyqtSlot(result="QVariant")
+def test_cloud_connection(self) -> dict:
+    """Test connection to cloud API"""
+
+@pyqtSlot(result="QVariant")
+def sync_now(self) -> dict:
+    """Manually trigger sync and return results"""
+
+@pyqtSlot(result="QVariant")
+def get_sync_status(self) -> dict:
+    """Get current sync statistics"""
+```
+
+**Initialization:**
+- SyncService initialized in `main()` with cloud API credentials
+- Passed to Api class constructor
+- Available to all QWebChannel methods
+
+#### 4. UI Components
+
+**HTML (`web/index.html`):**
+Added "Cloud Sync" card with:
+- Sync statistics display (Pending/Synced/Failed counts)
+- "Sync Now" button with cloud upload icon
+- Status message area for feedback
+
+**JavaScript (`web/script.js`):**
+- `updateSyncStatus()` - Fetches and displays sync stats
+- `handleSyncNow()` - Handles sync button click
+  - Tests connection first
+  - Shows loading state
+  - Displays success/error messages
+  - Auto-hides message after 5 seconds
+- Loads sync status on initial page load
+
+**CSS (`web/css/style.css`):**
+- Styled sync info display with 3-column layout
+- Green accent colors matching theme
+- Responsive button styling
+- Status message formatting
+
+### Testing Checklist (Pending)
+
+**Prerequisites:**
+1. ✅ Cloud API running (`npm run dev` in trackattendance-api)
+2. ⏳ Python QR app with test scans
+3. ⏳ Verify database has `sync_status` columns
+
+**Test Scenarios:**
+1. ⏳ Connection test (with API running)
+2. ⏳ Connection test (API offline - should show error)
+3. ⏳ Sync pending scans (verify cloud receives data)
+4. ⏳ Verify idempotency (sync same scans twice)
+5. ⏳ Check sync statistics update correctly
+6. ⏳ Test with large batch (100+ scans)
+
+### Known Issues / Notes
+
+**Configuration:**
+- API URL and key are currently hardcoded in `main.py`
+- TODO: Move to configuration file or environment variables
+- Suitable for testing, needs config management for production
+
+**Dependencies:**
+- Requires `requests` library (likely already installed)
+- Python 3.8+ for timezone support
+- PyQt6 for QWebChannel integration
+
+**Migration:**
+- Existing databases will auto-add columns with `DEFAULT 'pending'`
+- All existing scans will show as "pending" initially
+- First sync will upload all historical scans
+
+### Next Steps
+
+**Phase 2: Automatic Background Sync**
+1. Add QTimer-based scheduler (5-minute intervals)
+2. Silent background operation (no UI interruption)
+3. Configuration for sync interval
+4. Retry logic for failed syncs
+
+**Phase 3: Configuration Management**
+1. Create `config.ini` or use environment variables
+2. User-configurable API URL and key
+3. Settings UI for sync preferences
+4. Enable/disable sync toggle
+
+### Files Modified
+
+**Python QR App (`C:\Workspace\Dev\Python\QR`):**
+- `database.py` - Schema updates, new sync methods
+- `sync.py` - NEW FILE - Sync service
+- `main.py` - SyncService initialization, API methods
+- `web/index.html` - Sync UI components
+- `web/script.js` - Sync JavaScript functions
+- `web/css/style.css` - Sync component styling
+
+**Cloud API (`C:\Workspace\Dev\NodeJS\trackattendance-api`):**
+- No changes needed - existing `/v1/scans/batch` endpoint works perfectly
