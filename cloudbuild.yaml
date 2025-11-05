@@ -1,0 +1,37 @@
+# Cloud Build configuration for Google Cloud Run deployment
+steps:
+  # Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/trackattendance-api:$SHORT_SHA', '-t', 'gcr.io/$PROJECT_ID/trackattendance-api:latest', '.']
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args: [
+      'run', 'deploy', 'trackattendance-api',
+      '--image', 'gcr.io/$PROJECT_ID/trackattendance-api:$SHORT_SHA',
+      '--region', 'us-central1',
+      '--platform', 'managed',
+      '--allow-unauthenticated',
+      '--memory', '512Mi',
+      '--cpu', '1',
+      '--max-instances', '10',
+      '--min-instances', '0',
+      '--timeout', '300s',
+      '--concurrency', '100',
+      '--set-env-vars', 'NODE_ENV=production',
+      '--set-env-vars', 'PORT=5000',
+      '--set-env-vars', 'LOG_LEVEL=info',
+      '--set-secrets', 'DATABASE_URL=$$DATABASE_URL',
+      '--set-secrets', 'API_KEY=$$API_KEY'
+    ]
+
+# Configure logging to use Cloud Logging
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+  diskSizeGb: 100
+
+# Substitutions for environment variables
+substitutions:
+  _SHORT_SHA: '0123456789'
