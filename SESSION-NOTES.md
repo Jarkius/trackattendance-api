@@ -74,7 +74,8 @@ Set up and run the Track Attendance API server with Neon PostgreSQL database.
 
 ## Server Endpoints
 
-- `GET /healthz` - Health check (unauthenticated)
+- `GET /` - Health check (unauthenticated) - **USE THIS ENDPOINT**
+- `GET /healthz` - Legacy health endpoint (not working in Cloud Run)
 - `POST /v1/scans/batch` - Batch attendance scan ingestion (requires Bearer token)
 
 ## API Schema
@@ -866,7 +867,7 @@ Comprehensive testing of the cloud sync integration between QR Standalone App an
 - ✅ **Network Connectivity**: Office firewall bypass resolved (new network connection)
 
 #### 2. API Functionality Testing
-- ✅ **Health Endpoint**: `GET /healthz` responding correctly
+- ✅ **Health Endpoint**: `GET /` responding correctly
 - ✅ **Batch Endpoint**: `POST /v1/scans/batch` working perfectly
 - ✅ **Authentication**: Bearer token validation working
 - ✅ **Idempotency**: Duplicate detection working (tested)
@@ -1026,7 +1027,7 @@ CREATE INDEX idx_scans_sync_status ON scans(sync_status);
 **Purpose:** Handle communication with cloud API
 
 **Key Features:**
-- `test_connection()` - Tests `/healthz` endpoint (5 second timeout)
+- `test_connection()` - Tests `/` endpoint (5 second timeout)
 - `sync_pending_scans()` - Uploads pending scans in batches
 - Automatic idempotency key generation: `{station}-{badge_id}-{id}`
 - Batch size: 100 scans per request

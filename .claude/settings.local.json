@@ -67,7 +67,8 @@
       "WebFetch(domain:trackattendance-api-969370105809.asia-southeast1.run.app)",
       "Bash(\"C:\\Program Files (x86)\\Google\\Cloud SDK\\google-cloud-sdk\\bin\\gcloud.cmd\" builds submit --tag gcr.io/trackattendance-20251014/trackattendance-api:v2 .)",
       "Bash(\"C:\\Program Files (x86)\\Google\\Cloud SDK\\google-cloud-sdk\\bin\\gcloud.cmd\" run deploy:*)",
-      "Bash(\"C:\\Program Files (x86)\\Google\\Cloud SDK\\google-cloud-sdk\\bin\\gcloud.cmd\" run deploy trackattendance-api --image gcr.io/trackattendance-20251014/trackattendance-api:v2 --platform managed --region asia-southeast1 --allow-unauthenticated --memory 512Mi --cpu 1 --max-instances 10 --min-instances 0 --timeout 300s --concurrency 100 --set-env-vars NODE_ENV=production,LOG_LEVEL=info,DATABASE_URL=\"postgresql://neondb_owner:npg_uS0AnK3RtwOJ@ep-billowing-fog-a155zpn7-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require\",API_KEY=\"6541f2c7892b4e5287d50c2414d179f8\")"
+      "Bash(\"C:\\Program Files (x86)\\Google\\Cloud SDK\\google-cloud-sdk\\bin\\gcloud.cmd\" run deploy trackattendance-api --image gcr.io/trackattendance-20251014/trackattendance-api:v2 --platform managed --region asia-southeast1 --allow-unauthenticated --memory 512Mi --cpu 1 --max-instances 10 --min-instances 0 --timeout 300s --concurrency 100 --set-env-vars NODE_ENV=production,LOG_LEVEL=info,DATABASE_URL=\"postgresql://neondb_owner:npg_uS0AnK3RtwOJ@ep-billowing-fog-a155zpn7-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require\",API_KEY=\"6541f2c7892b4e5287d50c2414d179f8\")",
+      "Bash(\"C:\\Program Files (x86)\\Google\\Cloud SDK\\google-cloud-sdk\\bin\\gcloud.cmd\" builds submit --tag gcr.io/trackattendance-20251014/trackattendance-api:v3 .)"
     ],
     "deny": [],
     "ask": []

@@ -19,7 +19,7 @@ def test_cloud_run_api():
     # Test 1: Health Check
     print("1. Testing Health Check...")
     try:
-        response = requests.get(f"{api_url}/healthz", timeout=10)
+        response = requests.get(f"{api_url}/", timeout=10)
         print(f"   Status: {response.status_code}")
         if response.status_code == 200:
             print(f"   Response: {response.json()}")

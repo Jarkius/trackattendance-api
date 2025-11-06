@@ -33,7 +33,7 @@ cp .env.example .env
 npm run dev
 ```
 
-Visit `http://localhost:5000/healthz` to confirm the server is running.
+Visit `http://localhost:5000/` to confirm the server is running.
 
 ## Configuration
 `.env` must define:
@@ -54,7 +54,8 @@ psql "$DATABASE_URL" -f Postgres-schema.sql
 ## API Overview
 
 ### Endpoints
-- `GET /healthz` - readiness probe; unauthenticated
+- `GET /` - readiness probe; unauthenticated (health check)
+- `GET /healthz` - legacy health endpoint (use `/` instead)
 - `POST /v1/scans/batch` - accepts `{ "events": [...] }` payloads with ISO8601 timestamps; returns counts of saved and duplicate scans
 
 ### Request Format
@@ -124,7 +125,7 @@ All test scripts are located in `testscript/` directory (git-ignored).
 
 ```bash
 # Health check
-curl http://localhost:5000/healthz
+curl http://localhost:5000/
 
 # Submit a scan (requires API_KEY in .env)
 curl -X POST http://localhost:5000/v1/scans/batch \
@@ -178,7 +179,7 @@ Comprehensive manual testing guide available: [`MANUAL_TESTING_GUIDE.md`](MANUAL
 #### Quick Test Commands
 ```bash
 # Health check
-curl https://trackattendance-api-969370105809.asia-southeast1.run.app/healthz
+curl https://trackattendance-api-969370105809.asia-southeast1.run.app/
 
 # Production API test
 curl -X POST https://trackattendance-api-969370105809.asia-southeast1.run.app/v1/scans/batch \

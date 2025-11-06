@@ -108,10 +108,10 @@ python main.py
 
 **Steps:**
 1. Open browser or use curl
-2. Navigate to: `http://localhost:5000/healthz`
+2. Navigate to: `http://localhost:5000/`
 
 **Expected Results:**
-- ✅ Response: `{"ok":true}`
+- ✅ Response: `{"status":"ok","service":"Track Attendance API","version":"1.0.0","timestamp":"..."}
 - ✅ HTTP Status: 200
 - ✅ Response time < 1 second
 
@@ -327,7 +327,7 @@ curl -X POST http://localhost:5000/v1/scans/batch \
 
 ### API Health Check
 ```bash
-curl http://localhost:5000/healthz
+curl http://localhost:5000/
 ```
 
 ### Test API with Valid Data
@@ -444,7 +444,7 @@ node testscript/test-timestamp-conversion.js
 1. Verify API server is running and accessible
 2. Check API URL configuration in QR app
 3. Verify API key is correct
-4. Test network connectivity: `curl http://localhost:5000/healthz`
+4. Test network connectivity: `curl http://localhost:5000/`
 
 #### Issue: Database Connection Errors
 **Symptoms:** SQL errors, connection timeouts
