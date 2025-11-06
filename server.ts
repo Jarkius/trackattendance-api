@@ -41,9 +41,19 @@ const API_KEY = process.env.API_KEY;
 // ---- health ----
 app.get("/healthz", async () => ({ ok: true }));
 
+// ---- root health check (for Cloud Run) ----
+app.get("/", async () => ({
+  status: "ok",
+  service: "Track Attendance API",
+  version: "1.0.0",
+  timestamp: new Date().toISOString()
+}));
+
 // ---- auth middleware ----
 app.addHook("onRequest", async (req, reply) => {
-  if (req.url === "/healthz") return;
+  // Bypass authentication for health checks
+  if (req.url === "/healthz" || req.url === "/") return;
+
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   if (!token || !API_KEY || token !== API_KEY) {
