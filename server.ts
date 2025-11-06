@@ -17,12 +17,24 @@ const app = Fastify({
   requestTimeout: 30000 // 30 seconds
 });
 
-const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000, // Increased for better reliability with Neon
-});
+// Database connection with graceful failure handling
+let pool: pg.Pool | null = null;
+try {
+  pool = new pg.Pool({
+    connectionString: process.env.DATABASE_URL,
+    max: 20,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000, // Increased for better reliability with Neon
+  });
+
+  // Test the connection
+  pool.on('error', (err) => {
+    console.error('Database connection error:', err);
+  });
+} catch (err) {
+  console.error('Failed to initialize database pool:', err);
+  // Continue without database for health check purposes
+}
 
 const API_KEY = process.env.API_KEY;
 
@@ -90,6 +102,11 @@ interface BatchRequest {
 app.post<BatchRequest>("/v1/scans/batch", { schema: batchSchema }, async (req, reply) => {
   const events = req.body.events;
   if (!events?.length) return { saved: 0, duplicates: 0, errors: 0 };
+
+  if (!pool) {
+    reply.code(503);
+    throw new Error("Database not available");
+  }
 
   const client = await pool.connect();
   try {
@@ -174,7 +191,9 @@ const shutdown = async () => {
   app.log.info("Shutting down gracefully...");
   try {
     await app.close();
-    await pool.end();
+    if (pool) {
+      await pool.end();
+    }
     app.log.info("Shutdown complete");
     process.exit(0);
   } catch (err) {
