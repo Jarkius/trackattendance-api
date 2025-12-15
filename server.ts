@@ -196,6 +196,109 @@ app.post<BatchRequest>("/v1/scans/batch", { schema: batchSchema }, async (req, r
   }
 });
 
+// ---- dashboard endpoints (Issue #27) ----
+
+// GET /v1/dashboard/stats - Returns aggregated scan statistics
+app.get("/v1/dashboard/stats", async (req, reply) => {
+  if (!pool) {
+    reply.code(503);
+    throw new Error("Database not available");
+  }
+
+  const client = await pool.connect();
+  try {
+    // Get summary stats
+    const summaryResult = await client.query(`
+      SELECT
+        COUNT(*) as total_scans,
+        COUNT(DISTINCT badge_id) as unique_badges
+      FROM scans
+    `);
+
+    // Get per-station breakdown
+    const stationsResult = await client.query(`
+      SELECT
+        station_name,
+        COUNT(*) as total_scans,
+        COUNT(DISTINCT badge_id) as unique_badges,
+        MAX(scanned_at) as last_scan
+      FROM scans
+      GROUP BY station_name
+      ORDER BY total_scans DESC
+    `);
+
+    const summary = summaryResult.rows[0];
+    const stations = stationsResult.rows.map(row => ({
+      name: row.station_name,
+      scans: parseInt(row.total_scans),
+      unique: parseInt(row.unique_badges),
+      last_scan: row.last_scan ? new Date(row.last_scan).toISOString() : null,
+    }));
+
+    return {
+      total_scans: parseInt(summary.total_scans),
+      unique_badges: parseInt(summary.unique_badges),
+      stations,
+      timestamp: new Date().toISOString(),
+    };
+  } catch (e: any) {
+    app.log.error({ err: e }, "Dashboard stats query failed");
+    reply.code(500);
+    throw new Error("Failed to fetch dashboard stats");
+  } finally {
+    client.release();
+  }
+});
+
+// GET /v1/dashboard/export - Returns all scans for Excel export
+interface ExportQuery {
+  Querystring: {
+    limit?: string;
+  };
+}
+
+app.get<ExportQuery>("/v1/dashboard/export", async (req, reply) => {
+  if (!pool) {
+    reply.code(503);
+    throw new Error("Database not available");
+  }
+
+  const limit = Math.min(parseInt(req.query.limit || "100000"), 100000);
+
+  const client = await pool.connect();
+  try {
+    const result = await client.query(`
+      SELECT
+        badge_id,
+        station_name,
+        scanned_at,
+        meta->>'matched' as matched
+      FROM scans
+      ORDER BY scanned_at DESC
+      LIMIT $1
+    `, [limit]);
+
+    const scans = result.rows.map(row => ({
+      badge_id: row.badge_id,
+      station_name: row.station_name,
+      scanned_at: row.scanned_at ? new Date(row.scanned_at).toISOString() : null,
+      matched: row.matched === 'true',
+    }));
+
+    return {
+      total_records: scans.length,
+      export_timestamp: new Date().toISOString(),
+      scans,
+    };
+  } catch (e: any) {
+    app.log.error({ err: e }, "Dashboard export query failed");
+    reply.code(500);
+    throw new Error("Failed to export dashboard data");
+  } finally {
+    client.release();
+  }
+});
+
 // ---- graceful shutdown ----
 const shutdown = async () => {
   app.log.info("Shutting down gracefully...");
