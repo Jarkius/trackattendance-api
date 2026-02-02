@@ -299,6 +299,75 @@ app.get<ExportQuery>("/v1/dashboard/export", async (req, reply) => {
   }
 });
 
+// ---- admin endpoints ----
+
+// GET /v1/admin/scan-count - Get count of scans in cloud database
+app.get("/v1/admin/scan-count", async (req, reply) => {
+  if (!pool) {
+    reply.code(503);
+    throw new Error("Database not available");
+  }
+
+  const client = await pool.connect();
+  try {
+    const result = await client.query("SELECT COUNT(*) as count FROM scans");
+    return {
+      count: parseInt(result.rows[0].count),
+      timestamp: new Date().toISOString(),
+    };
+  } catch (e: any) {
+    reply.code(500);
+    return { error: "Failed to get scan count" };
+  } finally {
+    client.release();
+  }
+});
+
+// DELETE /v1/admin/clear-scans - Clear all scans from cloud database
+// Requires Bearer auth + X-Confirm-Delete: "DELETE ALL SCANS" header
+app.delete("/v1/admin/clear-scans", async (req, reply) => {
+  if (!pool) {
+    reply.code(503);
+    throw new Error("Database not available");
+  }
+
+  const confirmHeader = req.headers["x-confirm-delete"];
+  if (confirmHeader !== "DELETE ALL SCANS") {
+    reply.code(400);
+    return {
+      error: "Missing or invalid X-Confirm-Delete header",
+      message: "Set header 'X-Confirm-Delete: DELETE ALL SCANS' to confirm",
+    };
+  }
+
+  const client = await pool.connect();
+  try {
+    const countResult = await client.query("SELECT COUNT(*) as count FROM scans");
+    const deletedCount = parseInt(countResult.rows[0].count);
+
+    await client.query("TRUNCATE TABLE scans");
+
+    app.log.info(`Admin: Cleared ${deletedCount} scans from cloud database`);
+
+    return {
+      ok: true,
+      deleted: deletedCount,
+      message: `Cleared ${deletedCount} scan(s) from cloud database`,
+      timestamp: new Date().toISOString(),
+    };
+  } catch (e: any) {
+    app.log.error({ err: e }, "Admin clear-scans failed");
+    reply.code(500);
+    return {
+      ok: false,
+      error: "Failed to clear scans",
+      message: e.message,
+    };
+  } finally {
+    client.release();
+  }
+});
+
 // ---- graceful shutdown ----
 const shutdown = async () => {
   app.log.info("Shutting down gracefully...");
