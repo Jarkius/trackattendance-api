@@ -42,12 +42,14 @@ const API_KEY = process.env.API_KEY;
 const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX || "60", 10);
 const RATE_LIMIT_WINDOW = process.env.RATE_LIMIT_WINDOW || "1 minute";
 
+// ---- bootstrap (async to ensure plugin registration completes) ----
+async function bootstrap() {
+
 // ---- rate limiting ----
-app.register(rateLimit, {
+await app.register(rateLimit, {
   max: RATE_LIMIT_MAX,
   timeWindow: RATE_LIMIT_WINDOW,
   allowList: [],
-  // Health checks are exempt from rate limiting
   keyGenerator: (req) => req.ip,
   skipOnError: true,      // Don't block requests if rate limiter errors
   errorResponseBuilder: (_req, context) => ({
@@ -415,6 +417,12 @@ process.on("SIGINT", shutdown);
 
 // ---- start server ----
 const port = Number(process.env.PORT || 5000);
-app.listen({ host: "0.0.0.0", port }).then(() => {
-  app.log.info(`API listening on :${port}`);
+await app.listen({ host: "0.0.0.0", port });
+app.log.info(`API listening on :${port}`);
+
+} // end bootstrap
+
+bootstrap().catch((err) => {
+  console.error("Failed to start server:", err);
+  process.exit(1);
 });
