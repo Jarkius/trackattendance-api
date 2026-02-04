@@ -39,11 +39,13 @@ try {
 }
 
 const API_KEY = process.env.API_KEY;
+const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX || "60", 10);
+const RATE_LIMIT_WINDOW = process.env.RATE_LIMIT_WINDOW || "1 minute";
 
 // ---- rate limiting ----
 app.register(rateLimit, {
-  max: 60,               // 60 requests per minute per IP
-  timeWindow: "1 minute",
+  max: RATE_LIMIT_MAX,
+  timeWindow: RATE_LIMIT_WINDOW,
   allowList: [],
   // Health checks are exempt from rate limiting
   keyGenerator: (req) => req.ip,
