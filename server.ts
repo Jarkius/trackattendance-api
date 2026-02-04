@@ -2,6 +2,7 @@
 import Fastify from "fastify";
 import pg from "pg";
 import crypto from "crypto";
+import rateLimit from "@fastify/rate-limit";
 import 'dotenv/config'; // or: require('dotenv').config(); if using CommonJS
 
 // ---- config ----
@@ -39,11 +40,26 @@ try {
 
 const API_KEY = process.env.API_KEY;
 
+// ---- rate limiting ----
+app.register(rateLimit, {
+  max: 60,               // 60 requests per minute per IP
+  timeWindow: "1 minute",
+  allowList: [],
+  // Health checks are exempt from rate limiting
+  keyGenerator: (req) => req.ip,
+  skipOnError: true,      // Don't block requests if rate limiter errors
+  errorResponseBuilder: (_req, context) => ({
+    statusCode: 429,
+    error: "Too Many Requests",
+    message: `Rate limit exceeded, retry in ${context.after}`,
+  }),
+});
+
 // ---- health ----
-app.get("/healthz", async () => ({ ok: true }));
+app.get("/healthz", { config: { rateLimit: false } }, async () => ({ ok: true }));
 
 // ---- root health check (for Cloud Run) ----
-app.get("/", async () => ({
+app.get("/", { config: { rateLimit: false } }, async () => ({
   status: "ok",
   service: "Track Attendance API",
   version: "1.0.0",
