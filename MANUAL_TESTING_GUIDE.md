@@ -143,7 +143,7 @@ python main.py
 ```bash
 curl -X POST http://localhost:5000/v1/scans/batch \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer 6541f2c7892b4e5287d50c2414d179f8" \
+  -H "Authorization: Bearer $YOUR_API_KEY" \
   -d '{"events":[{"idempotency_key":"test-'$(date +%s)'","badge_id":"101117","station_name":"Test","scanned_at":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}]}'
 ```
 
@@ -256,13 +256,13 @@ Scans synced: 1
 # Test with missing required fields
 curl -X POST http://localhost:5000/v1/scans/batch \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer 6541f2c7892b4e5287d50c2414d179f8" \
+  -H "Authorization: Bearer $YOUR_API_KEY" \
   -d '{"events":[{"badge_id":"test"}]}'
 
 # Test with invalid timestamp
 curl -X POST http://localhost:5000/v1/scans/batch \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer 6541f2c7892b4e5287d50c2414d179f8" \
+  -H "Authorization: Bearer $YOUR_API_KEY" \
   -d '{"events":[{"idempotency_key":"test","badge_id":"101117","station_name":"Test","scanned_at":"invalid-date"}]}'
 ```
 
@@ -334,7 +334,7 @@ curl http://localhost:5000/
 ```bash
 curl -X POST http://localhost:5000/v1/scans/batch \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer 6541f2c7892b4e5287d50c2414d179f8" \
+  -H "Authorization: Bearer $YOUR_API_KEY" \
   -d '{
     "events": [{
       "idempotency_key": "test-'$(date +%s)'",
@@ -514,7 +514,7 @@ The Track Attendance system is **production-ready** when:
 
 ### Configuration Details
 - **API URL:** `http://localhost:5000` (development)
-- **API Key:** `6541f2c7892b4e5287d50c2414d179f8`
+- **API Key:** `$YOUR_API_KEY`
 - **Local Database:** `C:\Workspace\Dev\Python\QR\data\database.db`
 - **Cloud Database:** Neon PostgreSQL (configured)
 

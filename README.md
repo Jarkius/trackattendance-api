@@ -184,7 +184,7 @@ curl https://trackattendance-api-969370105809.asia-southeast1.run.app/
 # Production API test
 curl -X POST https://trackattendance-api-969370105809.asia-southeast1.run.app/v1/scans/batch \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer 6541f2c7892b4e5287d50c2414d179f8" \
+  -H "Authorization: Bearer $YOUR_API_KEY" \
   -d '{"events":[{"idempotency_key":"test-123","badge_id":"101117","station_name":"Test","scanned_at":"2025-10-15T12:30:45Z"}]}'
 ```
 

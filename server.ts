@@ -1,6 +1,7 @@
 // server.ts
 import Fastify from "fastify";
 import pg from "pg";
+import crypto from "crypto";
 import 'dotenv/config'; // or: require('dotenv').config(); if using CommonJS
 
 // ---- config ----
@@ -56,7 +57,14 @@ app.addHook("onRequest", async (req, reply) => {
 
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!token || !API_KEY || token !== API_KEY) {
+  if (!token || !API_KEY) {
+    reply.code(401);
+    throw new Error("Unauthorized");
+  }
+  // Constant-time comparison to prevent timing attacks
+  const tokenBuf = Buffer.from(token);
+  const keyBuf = Buffer.from(API_KEY);
+  if (tokenBuf.length !== keyBuf.length || !crypto.timingSafeEqual(tokenBuf, keyBuf)) {
     reply.code(401);
     throw new Error("Unauthorized");
   }

@@ -1036,7 +1036,7 @@ CREATE INDEX idx_scans_sync_status ON scans(sync_status);
 **API Configuration:**
 ```python
 CLOUD_API_URL = "http://localhost:5000"
-CLOUD_API_KEY = "6541f2c7892b4e5287d50c2414d179f8"
+CLOUD_API_KEY = "$YOUR_API_KEY"
 ```
 
 **Payload Format:**
