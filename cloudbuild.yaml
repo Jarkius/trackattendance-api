@@ -1,4 +1,6 @@
-# Cloud Build configuration for Google Cloud Run deployment
+# DEPRECATED: Replaced by GitHub Actions (.github/workflows/deploy.yml)
+# This file is kept for reference only. Do not use.
+# Original: Cloud Build configuration for Google Cloud Run deployment
 steps:
   # Build the Docker image
   - name: 'gcr.io/cloud-builders/docker'
