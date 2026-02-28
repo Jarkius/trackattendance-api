@@ -108,6 +108,12 @@ try {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `);
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS roster_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )
+  `);
   client.release();
   app.log.info("Database migration check complete");
 } catch (err) {
@@ -254,14 +260,39 @@ interface RosterSummaryRequest {
   };
 }
 
-// ---- roster summary endpoint ----
+// ---- roster summary endpoints ----
+
+// GET /v1/roster/hash — check if roster needs updating (authenticated)
+app.get("/v1/roster/hash", async (req, reply) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query("SELECT value FROM roster_meta WHERE key = 'hash'");
+    return { hash: result.rows[0]?.value || null };
+  } finally {
+    client.release();
+  }
+});
+
+// POST /v1/roster/summary — full replace of BU counts (authenticated)
 app.post<RosterSummaryRequest>("/v1/roster/summary", { schema: rosterSummarySchema }, async (req, reply) => {
   const { business_units } = req.body;
 
+  // Compute hash from payload to enable dedup across stations
+  const hashInput = business_units
+    .map(bu => `${bu.name}:${bu.registered}`)
+    .sort()
+    .join("|");
+  const rosterHash = crypto.createHash("sha256").update(hashInput).digest("hex").slice(0, 16);
+
   const client = await pool.connect();
   try {
-    await client.query("BEGIN");
+    // Check if hash matches — skip update if same roster already stored
+    const existing = await client.query("SELECT value FROM roster_meta WHERE key = 'hash'");
+    if (existing.rows[0]?.value === rosterHash) {
+      return { saved: business_units.length, skipped: true, hash: rosterHash };
+    }
 
+    await client.query("BEGIN");
     await client.query("DELETE FROM roster_summary");
 
     if (business_units.length > 0) {
@@ -274,9 +305,15 @@ app.post<RosterSummaryRequest>("/v1/roster/summary", { schema: rosterSummarySche
       `, [names, registered]);
     }
 
+    // Store hash
+    await client.query(`
+      INSERT INTO roster_meta (key, value) VALUES ('hash', $1)
+      ON CONFLICT (key) DO UPDATE SET value = $1
+    `, [rosterHash]);
+
     await client.query("COMMIT");
 
-    return { saved: business_units.length };
+    return { saved: business_units.length, skipped: false, hash: rosterHash };
   } catch (e: any) {
     try {
       await client.query("ROLLBACK");
