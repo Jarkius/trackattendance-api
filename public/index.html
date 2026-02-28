@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1a1d23">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Attendance Dashboard</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Outfit:wght@300;500;700;900&display=swap');
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root {
+  --green: #86BC25;
+  --green-dim: #86BC2540;
+  --green-glow: #86BC2520;
+  --dark: #1a1d23;
+  --surface: #22262e;
+  --surface-up: #2a2f38;
+  --border: #333940;
+  --text: #e8eaed;
+  --text-dim: #8b919a;
+  --text-mute: #555b65;
+  --danger: #e8443a;
+  --radius: 14px;
+}
+
+html { font-size: 16px; }
+
+body {
+  font-family: 'Outfit', system-ui, sans-serif;
+  background: var(--dark);
+  color: var(--text);
+  min-height: 100dvh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- NOISE TEXTURE OVERLAY ---- */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ---- TOP BAR ---- */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--dark);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  position: relative;
+}
+
+.pulse-dot::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: pulse 2s ease-out infinite;
+}
+
+.pulse-dot.error { background: var(--danger); }
+.pulse-dot.error::after { background: var(--danger); }
+
+@keyframes pulse {
+  0% { opacity: 0.6; transform: scale(1); }
+  100% { opacity: 0; transform: scale(2.5); }
+}
+
+.topbar-title {
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.countdown {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--text-mute);
+  letter-spacing: 0.05em;
+}
+
+/* ---- HERO STAT ---- */
+.hero {
+  padding: 32px 20px 24px;
+  text-align: center;
+  position: relative;
+}
+
+.hero::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 20px;
+  right: 20px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border), transparent);
+}
+
+.hero-label {
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+  margin-bottom: 8px;
+}
+
+.hero-number {
+  font-size: 5rem;
+  font-weight: 900;
+  line-height: 1;
+  color: var(--green);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hero-sub {
+  margin-top: 10px;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.hero-sub span {
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* ---- SECTION ---- */
+.section {
+  padding: 20px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.section-title {
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+}
+
+.section-count {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+
+/* ---- STAT ROWS ---- */
+.stat-row {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s ease;
+}
+
+.stat-row:active {
+  transform: scale(0.985);
+}
+
+.stat-row-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.stat-name {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 70%;
+}
+
+.stat-value {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--green);
+}
+
+.stat-bar-track {
+  height: 4px;
+  background: var(--surface-up);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.stat-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--green), #a8d64a);
+  border-radius: 2px;
+  transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  min-width: 2px;
+}
+
+/* ---- EMPTY STATE ---- */
+.empty {
+  text-align: center;
+  padding: 32px 20px;
+  color: var(--text-mute);
+  font-size: 0.85rem;
+}
+
+.empty-icon {
+  font-size: 2rem;
+  margin-bottom: 8px;
+  opacity: 0.4;
+}
+
+/* ---- LOADING ---- */
+.loading-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60dvh;
+  gap: 16px;
+}
+
+.loader {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--surface-up);
+  border-top-color: var(--green);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.loading-text {
+  font-size: 0.8rem;
+  color: var(--text-mute);
+  letter-spacing: 0.05em;
+}
+
+/* ---- ERROR BANNER ---- */
+.error-banner {
+  margin: 12px 20px;
+  padding: 10px 14px;
+  background: #e8443a18;
+  border: 1px solid #e8443a40;
+  border-radius: 10px;
+  font-size: 0.78rem;
+  color: var(--danger);
+  display: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.error-banner.show { display: flex; }
+
+/* ---- LAST UPDATED ---- */
+.footer {
+  text-align: center;
+  padding: 20px 20px 40px;
+  font-family: 'DM Mono', monospace;
+  font-size: 0.65rem;
+  color: var(--text-mute);
+  letter-spacing: 0.03em;
+}
+
+/* ---- FADE-IN ---- */
+.fade-in {
+  animation: fadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.delay-1 { animation-delay: 0.05s; }
+.delay-2 { animation-delay: 0.1s; }
+.delay-3 { animation-delay: 0.15s; }
+.delay-4 { animation-delay: 0.2s; }
+.delay-5 { animation-delay: 0.25s; }
+
+/* ---- DESKTOP ---- */
+@media (min-width: 640px) {
+  .hero-number { font-size: 6.5rem; }
+  .section { max-width: 540px; margin: 0 auto; }
+  .hero { max-width: 540px; margin: 0 auto; }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="pulse-dot" id="statusDot"></div>
+    <span class="topbar-title">Attendance Dashboard</span>
+  </div>
+  <span class="countdown" id="countdown">--</span>
+</div>
+
+<div id="loadingScreen" class="loading-screen">
+  <div class="loader"></div>
+  <div class="loading-text">Connecting...</div>
+</div>
+
+<div id="dashboard" style="display:none">
+  <div class="error-banner" id="errorBanner">
+    <span>&#9888;</span>
+    <span id="errorText">Connection lost. Showing cached data.</span>
+  </div>
+
+  <div class="hero fade-in">
+    <div class="hero-label">Unique Check-ins</div>
+    <div class="hero-number" id="heroNumber">0</div>
+    <div class="hero-sub">
+      <span id="totalScans">0</span> total scans
+    </div>
+  </div>
+
+  <div class="section fade-in delay-2">
+    <div class="section-header">
+      <span class="section-title">Stations</span>
+      <span class="section-count" id="stationCount">0</span>
+    </div>
+    <div id="stationList"></div>
+    <div class="empty" id="stationEmpty" style="display:none">
+      <div class="empty-icon">&#9723;</div>
+      No station data yet
+    </div>
+  </div>
+
+  <div class="section fade-in delay-3">
+    <div class="section-header">
+      <span class="section-title">Business Units</span>
+      <span class="section-count" id="buCount">0</span>
+    </div>
+    <div id="buList"></div>
+    <div class="empty" id="buEmpty" style="display:none">
+      <div class="empty-icon">&#9632;</div>
+      No business unit data yet
+    </div>
+  </div>
+
+  <div class="footer" id="footer">
+    Last updated: --
+  </div>
+</div>
+
+<script>
+(function() {
+  const POLL_INTERVAL = 30;
+  const API_URL = '../v1/dashboard/public/stats';
+
+  let countdown = POLL_INTERVAL;
+  let timer = null;
+  let lastData = null;
+  let isFirstLoad = true;
+  let consecutiveErrors = 0;
+
+  const $ = id => document.getElementById(id);
+
+  function animateNumber(el, target) {
+    const current = parseInt(el.textContent) || 0;
+    if (current === target) return;
+    const diff = target - current;
+    const steps = Math.min(Math.abs(diff), 20);
+    const stepTime = 400 / steps;
+    let step = 0;
+    const tick = () => {
+      step++;
+      const progress = step / steps;
+      const eased = 1 - Math.pow(1 - progress, 3);
+      el.textContent = Math.round(current + diff * eased).toLocaleString();
+      if (step < steps) setTimeout(tick, stepTime);
+    };
+    tick();
+  }
+
+  function renderRows(container, items, maxValue) {
+    const existing = container.children;
+    items.forEach((item, i) => {
+      const pct = maxValue > 0 ? (item.unique / maxValue * 100) : 0;
+      let row = existing[i];
+      if (!row) {
+        row = document.createElement('div');
+        row.className = 'stat-row fade-in delay-' + Math.min(i + 1, 5);
+        row.innerHTML = `
+          <div class="stat-row-top">
+            <div class="stat-name"></div>
+            <div class="stat-value"></div>
+          </div>
+          <div class="stat-bar-track">
+            <div class="stat-bar-fill"></div>
+          </div>`;
+        container.appendChild(row);
+      }
+      row.querySelector('.stat-name').textContent = item.name || 'Unknown';
+      row.querySelector('.stat-value').textContent = item.unique.toLocaleString();
+      row.querySelector('.stat-bar-fill').style.width = Math.max(pct, 1) + '%';
+    });
+    // Remove extra rows
+    while (container.children.length > items.length) {
+      container.removeChild(container.lastChild);
+    }
+  }
+
+  function update(data) {
+    lastData = data;
+
+    $('loadingScreen').style.display = 'none';
+    $('dashboard').style.display = 'block';
+
+    animateNumber($('heroNumber'), data.unique_badges);
+    animateNumber($('totalScans'), data.total_scans);
+
+    // Stations
+    const stations = data.stations || [];
+    const maxStation = stations.reduce((m, s) => Math.max(m, s.unique), 0);
+    $('stationCount').textContent = stations.length + (stations.length === 1 ? ' station' : ' stations');
+    $('stationEmpty').style.display = stations.length ? 'none' : 'block';
+    renderRows($('stationList'), stations, maxStation);
+
+    // Business units
+    const bus = data.business_units || [];
+    const maxBU = bus.reduce((m, b) => Math.max(m, b.unique), 0);
+    $('buCount').textContent = bus.length + (bus.length === 1 ? ' unit' : ' units');
+    $('buEmpty').style.display = bus.length ? 'none' : 'block';
+    renderRows($('buList'), bus, maxBU);
+
+    // Footer
+    const ts = data.timestamp ? new Date(data.timestamp) : new Date();
+    $('footer').textContent = 'Last updated: ' + ts.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+
+    isFirstLoad = false;
+  }
+
+  async function fetchData() {
+    try {
+      const res = await fetch(API_URL);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      consecutiveErrors = 0;
+      $('statusDot').classList.remove('error');
+      $('errorBanner').classList.remove('show');
+      update(data);
+    } catch (err) {
+      consecutiveErrors++;
+      $('statusDot').classList.add('error');
+      if (lastData) {
+        $('errorBanner').classList.add('show');
+        $('errorText').textContent = 'Connection lost. Showing cached data.';
+      } else if (!isFirstLoad) {
+        $('loadingScreen').querySelector('.loading-text').textContent = 'Connection failed. Retrying...';
+      }
+      console.error('[Dashboard]', err);
+    }
+  }
+
+  function startTimer() {
+    countdown = POLL_INTERVAL;
+    clearInterval(timer);
+    timer = setInterval(() => {
+      countdown--;
+      $('countdown').textContent = countdown + 's';
+      if (countdown <= 0) {
+        fetchData();
+        countdown = POLL_INTERVAL;
+      }
+    }, 1000);
+  }
+
+  // Pause polling when tab is hidden
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      clearInterval(timer);
+    } else {
+      fetchData();
+      startTimer();
+    }
+  });
+
+  // Init
+  fetchData().then(startTimer);
+})();
+</script>
+</body>
+</html>

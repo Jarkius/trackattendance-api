@@ -3,10 +3,11 @@ import Fastify from "fastify";
 import pg from "pg";
 import crypto from "crypto";
 import rateLimit from "@fastify/rate-limit";
-import 'dotenv/config'; // or: require('dotenv').config(); if using CommonJS
+import fastifyStatic from "@fastify/static";
+import path from "path";
+import 'dotenv/config';
 
 // ---- config ----
-// Validate required environment variables
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL environment variable is required");
 }
@@ -16,34 +17,95 @@ if (!process.env.API_KEY) {
 
 const app = Fastify({
   logger: true,
-  requestTimeout: 30000 // 30 seconds
+  requestTimeout: 30000
 });
 
-// Database connection with graceful failure handling
-let pool: pg.Pool | null = null;
-try {
-  pool = new pg.Pool({
-    connectionString: process.env.DATABASE_URL,
-    max: 20,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000, // Increased for better reliability with Neon
-  });
+// ---- database pool ----
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
+});
 
-  // Test the connection
-  pool.on('error', (err) => {
-    console.error('Database connection error:', err);
-  });
-} catch (err) {
-  console.error('Failed to initialize database pool:', err);
-  // Continue without database for health check purposes
-}
+pool.on('error', (err) => {
+  console.error('Database pool error:', err);
+});
 
 const API_KEY = process.env.API_KEY;
 const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX || "60", 10);
 const RATE_LIMIT_WINDOW = process.env.RATE_LIMIT_WINDOW || "1 minute";
+const PUBLIC_RATE_LIMIT_MAX = parseInt(process.env.PUBLIC_RATE_LIMIT_MAX || "30", 10);
 
-// ---- bootstrap (async to ensure plugin registration completes) ----
+// ---- meta field validation (#8) ----
+const META_MAX_PROPERTIES = 20;
+const META_MAX_KEY_LENGTH = 64;
+const META_MAX_STRING_LENGTH = 512;
+const META_MAX_SIZE_BYTES = 10240; // 10KB
+
+function validateMeta(meta: any): string | null {
+  if (meta === null || meta === undefined) return null;
+  if (typeof meta !== 'object' || Array.isArray(meta)) {
+    return "meta must be a flat object or null";
+  }
+
+  const keys = Object.keys(meta);
+  if (keys.length > META_MAX_PROPERTIES) {
+    return `meta exceeds maximum of ${META_MAX_PROPERTIES} properties`;
+  }
+
+  for (const key of keys) {
+    if (key.length > META_MAX_KEY_LENGTH) {
+      return `meta key "${key.slice(0, 20)}..." exceeds ${META_MAX_KEY_LENGTH} characters`;
+    }
+
+    const val = meta[key];
+    const t = typeof val;
+    if (val !== null && t !== 'string' && t !== 'number' && t !== 'boolean') {
+      return `meta.${key} has unsupported type "${t}" (only string, number, boolean, null allowed)`;
+    }
+    if (t === 'string' && (val as string).length > META_MAX_STRING_LENGTH) {
+      return `meta.${key} string value exceeds ${META_MAX_STRING_LENGTH} characters`;
+    }
+  }
+
+  // Check total serialized size
+  const serialized = JSON.stringify(meta);
+  if (serialized.length > META_MAX_SIZE_BYTES) {
+    return `meta exceeds maximum size of ${META_MAX_SIZE_BYTES} bytes`;
+  }
+
+  return null;
+}
+
+// ---- bootstrap ----
 async function bootstrap() {
+
+// ---- Issue #7: Eager DB connection test ----
+try {
+  const client = await pool.connect();
+  await client.query('SELECT 1');
+  client.release();
+  app.log.info("Database connection verified");
+} catch (err) {
+  app.log.error({ err }, "Failed to connect to database at startup");
+  process.exit(1);
+}
+
+// ---- run migration ----
+try {
+  const client = await pool.connect();
+  await client.query(`
+    ALTER TABLE scans ADD COLUMN IF NOT EXISTS business_unit TEXT
+  `);
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_scans_business_unit ON scans (business_unit)
+  `);
+  client.release();
+  app.log.info("Database migration check complete");
+} catch (err) {
+  app.log.warn({ err }, "Migration check failed (non-fatal)");
+}
 
 // ---- rate limiting ----
 await app.register(rateLimit, {
@@ -51,7 +113,7 @@ await app.register(rateLimit, {
   timeWindow: RATE_LIMIT_WINDOW,
   allowList: [],
   keyGenerator: (req) => req.ip,
-  skipOnError: true,      // Don't block requests if rate limiter errors
+  skipOnError: true,
   errorResponseBuilder: (_req, context) => ({
     statusCode: 429,
     error: "Too Many Requests",
@@ -59,21 +121,39 @@ await app.register(rateLimit, {
   }),
 });
 
-// ---- health ----
-app.get("/healthz", { config: { rateLimit: false } }, async () => ({ ok: true }));
+// ---- static files for public dashboard ----
+await app.register(fastifyStatic, {
+  root: path.join(__dirname, 'public'),
+  prefix: '/dashboard/',
+  decorateReply: false,
+});
 
-// ---- root health check (for Cloud Run) ----
+// ---- health ----
+app.get("/healthz", { config: { rateLimit: false } }, async () => {
+  // Issue #7: Health check verifies DB connectivity
+  try {
+    const client = await pool.connect();
+    await client.query('SELECT 1');
+    client.release();
+    return { ok: true, db: "connected" };
+  } catch {
+    return { ok: false, db: "disconnected" };
+  }
+});
+
 app.get("/", { config: { rateLimit: false } }, async () => ({
   status: "ok",
   service: "Track Attendance API",
-  version: "1.0.0",
+  version: "1.1.0",
   timestamp: new Date().toISOString()
 }));
 
 // ---- auth middleware ----
 app.addHook("onRequest", async (req, reply) => {
-  // Bypass authentication for health checks
+  // Bypass authentication for health checks and public endpoints
   if (req.url === "/healthz" || req.url === "/") return;
+  if (req.url.startsWith("/v1/dashboard/public")) return;
+  if (req.url.startsWith("/dashboard/")) return;
 
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
@@ -81,7 +161,6 @@ app.addHook("onRequest", async (req, reply) => {
     reply.code(401);
     throw new Error("Unauthorized");
   }
-  // Constant-time comparison to prevent timing attacks
   const tokenBuf = Buffer.from(token);
   const keyBuf = Buffer.from(API_KEY);
   if (tokenBuf.length !== keyBuf.length || !crypto.timingSafeEqual(tokenBuf, keyBuf)) {
@@ -110,12 +189,13 @@ const batchSchema = {
             idempotency_key: { type: "string", minLength: 8, maxLength: 128 },
             badge_id: { type: "string", minLength: 1, maxLength: 128 },
             station_name: { type: "string", minLength: 1, maxLength: 128 },
-            scanned_at: { type: "string", format: "date-time" }, // ISO8601
+            scanned_at: { type: "string", format: "date-time" },
             meta: { type: ["object", "null"] },
+            business_unit: { type: ["string", "null"], maxLength: 256 },
           },
           additionalProperties: false,
         },
-        maxItems: 2000, // safety cap
+        maxItems: 2000,
       },
     },
     additionalProperties: false,
@@ -126,8 +206,9 @@ type ScanInput = {
   idempotency_key: string;
   badge_id: string;
   station_name: string;
-  scanned_at: string; // ISO8601
+  scanned_at: string;
   meta?: Record<string, any> | null;
+  business_unit?: string | null;
 };
 
 interface BatchRequest {
@@ -136,52 +217,58 @@ interface BatchRequest {
   };
 }
 
-// ---- batch endpoint (single SQL) ----
+// ---- batch endpoint ----
 app.post<BatchRequest>("/v1/scans/batch", { schema: batchSchema }, async (req, reply) => {
   const events = req.body.events;
   if (!events?.length) return { saved: 0, duplicates: 0, errors: 0 };
 
-  if (!pool) {
-    reply.code(503);
-    throw new Error("Database not available");
+  // Validate meta fields (#8)
+  for (const ev of events) {
+    if (ev.meta !== undefined && ev.meta !== null) {
+      const metaError = validateMeta(ev.meta);
+      if (metaError) {
+        reply.code(400);
+        return { error: metaError, saved: 0, duplicates: 0, errors: events.length };
+      }
+    }
   }
 
   const client = await pool.connect();
   try {
     await client.query("begin");
 
-    // Build arrays for UNNEST
     const keys: string[] = [];
     const badgeIds: string[] = [];
     const stationNames: string[] = [];
     const scannedAts: Date[] = [];
     const metas: any[] = [];
+    const businessUnits: (string | null)[] = [];
 
     for (const ev of events) {
       keys.push(ev.idempotency_key);
       badgeIds.push(ev.badge_id);
       stationNames.push(ev.station_name);
 
-      // Validate and parse date
       const date = new Date(ev.scanned_at);
       if (isNaN(date.getTime())) {
         throw new Error(`Invalid date format: ${ev.scanned_at}`);
       }
       scannedAts.push(date);
-
       metas.push(ev.meta ?? null);
+      businessUnits.push(ev.business_unit ?? null);
     }
 
     const insertSql = `
       insert into scans
-        (idempotency_key, badge_id, station_name, scanned_at, meta)
+        (idempotency_key, badge_id, station_name, scanned_at, meta, business_unit)
       select *
       from unnest(
         $1::text[],
         $2::text[],
         $3::text[],
         $4::timestamptz[],
-        $5::jsonb[]
+        $5::jsonb[],
+        $6::text[]
       )
       on conflict (idempotency_key) do nothing
       returning idempotency_key
@@ -193,6 +280,7 @@ app.post<BatchRequest>("/v1/scans/batch", { schema: batchSchema }, async (req, r
       stationNames,
       scannedAts,
       metas,
+      businessUnits,
     ]);
 
     await client.query("commit");
@@ -224,18 +312,12 @@ app.post<BatchRequest>("/v1/scans/batch", { schema: batchSchema }, async (req, r
   }
 });
 
-// ---- dashboard endpoints (Issue #27) ----
+// ---- dashboard endpoints ----
 
-// GET /v1/dashboard/stats - Returns aggregated scan statistics
+// GET /v1/dashboard/stats - Authenticated aggregated stats
 app.get("/v1/dashboard/stats", async (req, reply) => {
-  if (!pool) {
-    reply.code(503);
-    throw new Error("Database not available");
-  }
-
   const client = await pool.connect();
   try {
-    // Get summary stats
     const summaryResult = await client.query(`
       SELECT
         COUNT(*) as total_scans,
@@ -243,7 +325,6 @@ app.get("/v1/dashboard/stats", async (req, reply) => {
       FROM scans
     `);
 
-    // Get per-station breakdown
     const stationsResult = await client.query(`
       SELECT
         station_name,
@@ -255,6 +336,16 @@ app.get("/v1/dashboard/stats", async (req, reply) => {
       ORDER BY total_scans DESC
     `);
 
+    const buResult = await client.query(`
+      SELECT
+        COALESCE(business_unit, 'Unknown') as business_unit,
+        COUNT(*) as total_scans,
+        COUNT(DISTINCT badge_id) as unique_badges
+      FROM scans
+      GROUP BY business_unit
+      ORDER BY unique_badges DESC
+    `);
+
     const summary = summaryResult.rows[0];
     const stations = stationsResult.rows.map(row => ({
       name: row.station_name,
@@ -263,10 +354,17 @@ app.get("/v1/dashboard/stats", async (req, reply) => {
       last_scan: row.last_scan ? new Date(row.last_scan).toISOString() : null,
     }));
 
+    const business_units = buResult.rows.map(row => ({
+      name: row.business_unit,
+      scans: parseInt(row.total_scans),
+      unique: parseInt(row.unique_badges),
+    }));
+
     return {
       total_scans: parseInt(summary.total_scans),
       unique_badges: parseInt(summary.unique_badges),
       stations,
+      business_units,
       timestamp: new Date().toISOString(),
     };
   } catch (e: any) {
@@ -278,7 +376,67 @@ app.get("/v1/dashboard/stats", async (req, reply) => {
   }
 });
 
-// GET /v1/dashboard/export - Returns all scans for Excel export
+// GET /v1/dashboard/public/stats - Unauthenticated public stats (stricter rate limit)
+app.get("/v1/dashboard/public/stats", {
+  config: {
+    rateLimit: {
+      max: PUBLIC_RATE_LIMIT_MAX,
+      timeWindow: RATE_LIMIT_WINDOW,
+    }
+  }
+}, async (req, reply) => {
+  const client = await pool.connect();
+  try {
+    const summaryResult = await client.query(`
+      SELECT
+        COUNT(*) as total_scans,
+        COUNT(DISTINCT badge_id) as unique_badges
+      FROM scans
+    `);
+
+    const stationsResult = await client.query(`
+      SELECT
+        station_name,
+        COUNT(DISTINCT badge_id) as unique_badges
+      FROM scans
+      GROUP BY station_name
+      ORDER BY unique_badges DESC
+    `);
+
+    const buResult = await client.query(`
+      SELECT
+        COALESCE(business_unit, 'Unknown') as business_unit,
+        COUNT(DISTINCT badge_id) as unique_badges
+      FROM scans
+      GROUP BY business_unit
+      ORDER BY unique_badges DESC
+    `);
+
+    const summary = summaryResult.rows[0];
+
+    return {
+      total_scans: parseInt(summary.total_scans),
+      unique_badges: parseInt(summary.unique_badges),
+      stations: stationsResult.rows.map(row => ({
+        name: row.station_name,
+        unique: parseInt(row.unique_badges),
+      })),
+      business_units: buResult.rows.map(row => ({
+        name: row.business_unit,
+        unique: parseInt(row.unique_badges),
+      })),
+      timestamp: new Date().toISOString(),
+    };
+  } catch (e: any) {
+    app.log.error({ err: e }, "Public dashboard stats query failed");
+    reply.code(500);
+    throw new Error("Failed to fetch public dashboard stats");
+  } finally {
+    client.release();
+  }
+});
+
+// GET /v1/dashboard/export - Authenticated export for Excel
 interface ExportQuery {
   Querystring: {
     limit?: string;
@@ -286,11 +444,6 @@ interface ExportQuery {
 }
 
 app.get<ExportQuery>("/v1/dashboard/export", async (req, reply) => {
-  if (!pool) {
-    reply.code(503);
-    throw new Error("Database not available");
-  }
-
   const limit = Math.min(parseInt(req.query.limit || "100000"), 100000);
 
   const client = await pool.connect();
@@ -300,7 +453,8 @@ app.get<ExportQuery>("/v1/dashboard/export", async (req, reply) => {
         badge_id,
         station_name,
         scanned_at,
-        meta->>'matched' as matched
+        meta->>'matched' as matched,
+        business_unit
       FROM scans
       ORDER BY scanned_at DESC
       LIMIT $1
@@ -311,6 +465,7 @@ app.get<ExportQuery>("/v1/dashboard/export", async (req, reply) => {
       station_name: row.station_name,
       scanned_at: row.scanned_at ? new Date(row.scanned_at).toISOString() : null,
       matched: row.matched === 'true',
+      business_unit: row.business_unit || null,
     }));
 
     return {
@@ -329,13 +484,7 @@ app.get<ExportQuery>("/v1/dashboard/export", async (req, reply) => {
 
 // ---- admin endpoints ----
 
-// GET /v1/admin/scan-count - Get count of scans in cloud database
 app.get("/v1/admin/scan-count", async (req, reply) => {
-  if (!pool) {
-    reply.code(503);
-    throw new Error("Database not available");
-  }
-
   const client = await pool.connect();
   try {
     const result = await client.query("SELECT COUNT(*) as count FROM scans");
@@ -351,14 +500,7 @@ app.get("/v1/admin/scan-count", async (req, reply) => {
   }
 });
 
-// DELETE /v1/admin/clear-scans - Clear all scans from cloud database
-// Requires Bearer auth + X-Confirm-Delete: "DELETE ALL SCANS" header
 app.delete("/v1/admin/clear-scans", async (req, reply) => {
-  if (!pool) {
-    reply.code(503);
-    throw new Error("Database not available");
-  }
-
   const confirmHeader = req.headers["x-confirm-delete"];
   if (confirmHeader !== "DELETE ALL SCANS") {
     reply.code(400);
@@ -401,9 +543,7 @@ const shutdown = async () => {
   app.log.info("Shutting down gracefully...");
   try {
     await app.close();
-    if (pool) {
-      await pool.end();
-    }
+    await pool.end();
     app.log.info("Shutdown complete");
     process.exit(0);
   } catch (err) {

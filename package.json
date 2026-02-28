@@ -15,6 +15,7 @@
   "type": "commonjs",
   "dependencies": {
     "@fastify/rate-limit": "^10.3.0",
+    "@fastify/static": "^9.0.0",
     "dotenv": "^17.2.3",
     "fastify": "^5.6.1",
     "pg": "^8.16.3"
