@@ -7,10 +7,15 @@ create table if not exists scans (
   badge_id          text        not null,            -- employee badge ID
   scanned_at        timestamptz not null,            -- UTC timestamp
   meta              jsonb,                           -- additional context (NO PII)
+  business_unit     text,                            -- organizational unit (e.g. "Engineering")
   created_at        timestamptz not null default now()
 );
 
 -- indexes for performance
-create index if not exists idx_scans_badge_id      on scans (badge_id);
-create index if not exists idx_scans_station_name  on scans (station_name);
-create index if not exists idx_scans_scanned_at    on scans (scanned_at);
+create index if not exists idx_scans_badge_id       on scans (badge_id);
+create index if not exists idx_scans_station_name   on scans (station_name);
+create index if not exists idx_scans_scanned_at     on scans (scanned_at);
+create index if not exists idx_scans_business_unit  on scans (business_unit);
+
+-- migration for existing databases
+-- ALTER TABLE scans ADD COLUMN IF NOT EXISTS business_unit TEXT;
