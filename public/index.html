@@ -221,6 +221,25 @@ body::before {
   font-size: 0.95rem;
   font-weight: 500;
   color: var(--green);
+  white-space: nowrap;
+}
+
+.stat-value.has-registered {
+  font-size: 0.82rem;
+}
+
+.stat-value .stat-registered {
+  color: var(--text-mute);
+  font-size: 0.78rem;
+}
+
+.stat-pct {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.62rem;
+  color: var(--text-mute);
+  position: absolute;
+  bottom: 5px;
+  right: 16px;
 }
 
 .stat-bar-track {
@@ -417,10 +436,12 @@ body::before {
     tick();
   }
 
-  function renderRows(container, items, maxValue) {
+  function renderRows(container, items, maxValue, useRegistered) {
     const existing = container.children;
     items.forEach((item, i) => {
-      const pct = maxValue > 0 ? (item.unique / maxValue * 100) : 0;
+      const hasReg = useRegistered && item.registered > 0;
+      const barMax = hasReg ? item.registered : maxValue;
+      const pct = barMax > 0 ? Math.min(item.unique / barMax * 100, 100) : 0;
       let row = existing[i];
       if (!row) {
         row = document.createElement('div');
@@ -436,7 +457,25 @@ body::before {
         container.appendChild(row);
       }
       row.querySelector('.stat-name').textContent = item.name || 'Unknown';
-      row.querySelector('.stat-value').textContent = item.unique.toLocaleString();
+      const valEl = row.querySelector('.stat-value');
+      if (hasReg) {
+        valEl.classList.add('has-registered');
+        valEl.innerHTML = item.unique.toLocaleString() +
+          ' <span class="stat-registered">/ ' + item.registered.toLocaleString() + '</span>';
+        // Percentage label — create or reuse
+        let pctEl = row.querySelector('.stat-pct');
+        if (!pctEl) {
+          pctEl = document.createElement('div');
+          pctEl.className = 'stat-pct';
+          row.appendChild(pctEl);
+        }
+        pctEl.textContent = Math.round(pct) + '%';
+      } else {
+        valEl.classList.remove('has-registered');
+        valEl.textContent = item.unique.toLocaleString();
+        const pctEl = row.querySelector('.stat-pct');
+        if (pctEl) pctEl.remove();
+      }
       row.querySelector('.stat-bar-fill').style.width = Math.max(pct, 1) + '%';
     });
     // Remove extra rows
@@ -463,10 +502,12 @@ body::before {
 
     // Business units
     const bus = data.business_units || [];
+    // When registered counts are present use them as the bar denominator per row;
+    // otherwise fall back to the cross-row maximum.
     const maxBU = bus.reduce((m, b) => Math.max(m, b.unique), 0);
     $('buCount').textContent = bus.length + (bus.length === 1 ? ' unit' : ' units');
     $('buEmpty').style.display = bus.length ? 'none' : 'block';
-    renderRows($('buList'), bus, maxBU);
+    renderRows($('buList'), bus, maxBU, true);
 
     // Footer
     const ts = data.timestamp ? new Date(data.timestamp) : new Date();

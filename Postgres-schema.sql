@@ -17,5 +17,12 @@ create index if not exists idx_scans_station_name   on scans (station_name);
 create index if not exists idx_scans_scanned_at     on scans (scanned_at);
 create index if not exists idx_scans_business_unit  on scans (business_unit);
 
+-- roster summary: registered headcount per business unit (full-replace on each upload)
+create table if not exists roster_summary (
+  business_unit text        primary key,
+  registered    integer     not null,
+  updated_at    timestamptz not null default now()
+);
+
 -- migration for existing databases
 -- ALTER TABLE scans ADD COLUMN IF NOT EXISTS business_unit TEXT;

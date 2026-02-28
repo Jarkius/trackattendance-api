@@ -101,6 +101,13 @@ try {
   await client.query(`
     CREATE INDEX IF NOT EXISTS idx_scans_business_unit ON scans (business_unit)
   `);
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS roster_summary (
+      business_unit TEXT PRIMARY KEY,
+      registered INTEGER NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
   client.release();
   app.log.info("Database migration check complete");
 } catch (err) {
@@ -216,6 +223,73 @@ interface BatchRequest {
     events: ScanInput[];
   };
 }
+
+// ---- roster summary schema ----
+const rosterSummarySchema = {
+  body: {
+    type: "object",
+    required: ["business_units"],
+    properties: {
+      business_units: {
+        type: "array",
+        items: {
+          type: "object",
+          required: ["name", "registered"],
+          properties: {
+            name: { type: "string", maxLength: 256 },
+            registered: { type: "integer", minimum: 0 },
+          },
+          additionalProperties: false,
+        },
+        maxItems: 200,
+      },
+    },
+    additionalProperties: false,
+  },
+};
+
+interface RosterSummaryRequest {
+  Body: {
+    business_units: Array<{ name: string; registered: number }>;
+  };
+}
+
+// ---- roster summary endpoint ----
+app.post<RosterSummaryRequest>("/v1/roster/summary", { schema: rosterSummarySchema }, async (req, reply) => {
+  const { business_units } = req.body;
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    await client.query("DELETE FROM roster_summary");
+
+    if (business_units.length > 0) {
+      const names = business_units.map(bu => bu.name);
+      const registered = business_units.map(bu => bu.registered);
+
+      await client.query(`
+        INSERT INTO roster_summary (business_unit, registered)
+        SELECT * FROM unnest($1::text[], $2::integer[])
+      `, [names, registered]);
+    }
+
+    await client.query("COMMIT");
+
+    return { saved: business_units.length };
+  } catch (e: any) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError: any) {
+      app.log.error({ err: rollbackError }, "Rollback failed");
+    }
+    app.log.error({ err: e }, "Roster summary update failed");
+    reply.code(500);
+    return { error: "Failed to update roster summary" };
+  } finally {
+    client.release();
+  }
+});
 
 // ---- batch endpoint ----
 app.post<BatchRequest>("/v1/scans/batch", { schema: batchSchema }, async (req, reply) => {
@@ -338,11 +412,12 @@ app.get("/v1/dashboard/stats", async (req, reply) => {
 
     const buResult = await client.query(`
       SELECT
-        COALESCE(business_unit, 'Unknown') as business_unit,
-        COUNT(*) as total_scans,
-        COUNT(DISTINCT badge_id) as unique_badges
-      FROM scans
-      GROUP BY business_unit
+        COALESCE(s.business_unit, r.business_unit, 'Unknown') as business_unit,
+        COALESCE(r.registered, 0) as registered,
+        COUNT(DISTINCT s.badge_id) as unique_badges
+      FROM scans s
+      FULL OUTER JOIN roster_summary r ON s.business_unit = r.business_unit
+      GROUP BY COALESCE(s.business_unit, r.business_unit, 'Unknown'), r.registered
       ORDER BY unique_badges DESC
     `);
 
@@ -356,8 +431,8 @@ app.get("/v1/dashboard/stats", async (req, reply) => {
 
     const business_units = buResult.rows.map(row => ({
       name: row.business_unit,
-      scans: parseInt(row.total_scans),
-      unique: parseInt(row.unique_badges),
+      registered: parseInt(row.registered) || 0,
+      unique: parseInt(row.unique_badges) || 0,
     }));
 
     return {
@@ -405,10 +480,12 @@ app.get("/v1/dashboard/public/stats", {
 
     const buResult = await client.query(`
       SELECT
-        COALESCE(business_unit, 'Unknown') as business_unit,
-        COUNT(DISTINCT badge_id) as unique_badges
-      FROM scans
-      GROUP BY business_unit
+        COALESCE(s.business_unit, r.business_unit, 'Unknown') as business_unit,
+        COALESCE(r.registered, 0) as registered,
+        COUNT(DISTINCT s.badge_id) as unique_badges
+      FROM scans s
+      FULL OUTER JOIN roster_summary r ON s.business_unit = r.business_unit
+      GROUP BY COALESCE(s.business_unit, r.business_unit, 'Unknown'), r.registered
       ORDER BY unique_badges DESC
     `);
 
@@ -423,7 +500,8 @@ app.get("/v1/dashboard/public/stats", {
       })),
       business_units: buResult.rows.map(row => ({
         name: row.business_unit,
-        unique: parseInt(row.unique_badges),
+        registered: parseInt(row.registered) || 0,
+        unique: parseInt(row.unique_badges) || 0,
       })),
       timestamp: new Date().toISOString(),
     };
