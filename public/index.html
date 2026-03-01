@@ -565,8 +565,11 @@ html.light .error-banner {
     }
   });
 
-  const POLL_INTERVAL = 60;        // seconds between dashboard data refreshes
-  const STATUS_INTERVAL = 60000;   // ms between station status refreshes
+  // Configurable refresh interval via URL param: ?refresh=120 (seconds, 10-600)
+  const urlParams = new URLSearchParams(window.location.search);
+  const customRefresh = parseInt(urlParams.get('refresh'));
+  const POLL_INTERVAL = (customRefresh >= 10 && customRefresh <= 600) ? customRefresh : 60;
+  const STATUS_INTERVAL = POLL_INTERVAL * 1000;  // station status follows same cadence
   const API_URL = '../v1/dashboard/public/stats';
 
   let countdown = POLL_INTERVAL;
@@ -721,6 +724,8 @@ html.light .error-banner {
     }
   }
 
+  let stationTimer = null;
+
   function startTimer() {
     countdown = POLL_INTERVAL;
     clearInterval(timer);
@@ -734,13 +739,22 @@ html.light .error-banner {
     }, 1000);
   }
 
-  // Pause polling when tab is hidden
+  function startStationTimer() {
+    clearInterval(stationTimer);
+    stationTimer = setInterval(fetchStationStatus, STATUS_INTERVAL);
+  }
+
+  // Pause ALL polling when tab is hidden, resume + refresh on return
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
       clearInterval(timer);
+      clearInterval(stationTimer);
+      $('countdown').textContent = 'paused';
     } else {
       fetchData();
+      fetchStationStatus();
       startTimer();
+      startStationTimer();
     }
   });
 
@@ -817,7 +831,7 @@ html.light .error-banner {
   // Init
   fetchData().then(startTimer);
   fetchStationStatus();
-  setInterval(fetchStationStatus, STATUS_INTERVAL);
+  startStationTimer();
 })();
 </script>
 </body>
