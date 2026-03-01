@@ -392,6 +392,44 @@ body::before {
   .section { max-width: 540px; margin: 0 auto; }
   .hero { max-width: 540px; margin: 0 auto; }
 }
+
+/* ---- LIGHT THEME ---- */
+html.light {
+  --dark: #f5f6f8;
+  --surface: #ffffff;
+  --surface-up: #e8eaef;
+  --border: #dde0e5;
+  --text: #1a1d23;
+  --text-dim: #5a6270;
+  --text-mute: #7a8290;
+  --green-dim: #86BC2530;
+  --green-glow: #86BC2515;
+}
+html.light body::before { opacity: 0; }
+html.light .error-banner {
+  background: #e8443a12;
+  border-color: #e8443a30;
+}
+
+/* ---- THEME TOGGLE ---- */
+.theme-toggle {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: var(--surface-up);
+  border-radius: 8px;
+  color: var(--text-dim);
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, color 0.2s;
+  -webkit-tap-highlight-color: transparent;
+  margin-left: 12px;
+  flex-shrink: 0;
+}
+.theme-toggle:active { transform: scale(0.9); }
 </style>
 </head>
 <body>
@@ -401,7 +439,10 @@ body::before {
     <div class="pulse-dot" id="statusDot"></div>
     <span class="topbar-title">Attendance Dashboard</span>
   </div>
-  <span class="countdown" id="countdown">--</span>
+  <div style="display:flex;align-items:center;gap:4px">
+    <span class="countdown" id="countdown">--</span>
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">&#9790;</button>
+  </div>
 </div>
 
 <div id="loadingScreen" class="loading-screen">
@@ -461,7 +502,33 @@ body::before {
 
 <script>
 (function() {
-  const POLL_INTERVAL = 30;
+  // ---- Theme ----
+  function applyTheme(mode) {
+    const isLight = mode === 'light' || (mode === 'auto' && window.matchMedia('(prefers-color-scheme: light)').matches);
+    document.documentElement.classList.toggle('light', isLight);
+    var mc = document.querySelector('meta[name="theme-color"]');
+    if (mc) mc.setAttribute('content', isLight ? '#f5f6f8' : '#1a1d23');
+    var btn = document.getElementById('themeToggle');
+    if (btn) btn.innerHTML = isLight ? '&#9728;' : '&#9790;';
+  }
+  var themeMode = localStorage.getItem('theme') || 'auto';
+  applyTheme(themeMode);
+  window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', function() {
+    if ((localStorage.getItem('theme') || 'auto') === 'auto') applyTheme('auto');
+  });
+  document.addEventListener('click', function(e) {
+    if (e.target.closest('#themeToggle')) {
+      var cur = localStorage.getItem('theme') || 'auto';
+      // Cycle: auto → light → dark → auto
+      var next = cur === 'auto' ? 'light' : cur === 'light' ? 'dark' : 'auto';
+      localStorage.setItem('theme', next);
+      themeMode = next;
+      applyTheme(next);
+    }
+  });
+
+  const POLL_INTERVAL = 30;        // seconds between dashboard data refreshes
+  const STATUS_INTERVAL = 30000;   // ms between station status refreshes
   const API_URL = '../v1/dashboard/public/stats';
 
   let countdown = POLL_INTERVAL;
@@ -657,7 +724,7 @@ body::before {
   // Init
   fetchData().then(startTimer);
   fetchStationStatus();
-  setInterval(fetchStationStatus, 30000);
+  setInterval(fetchStationStatus, STATUS_INTERVAL);
 })();
 </script>
 </body>
