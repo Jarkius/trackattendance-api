@@ -225,6 +225,7 @@ type ScanInput = {
   scanned_at: string;
   meta?: Record<string, any> | null;
   business_unit?: string | null;
+  scan_source?: string;
 };
 
 interface BatchRequest {
