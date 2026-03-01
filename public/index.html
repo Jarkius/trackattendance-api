@@ -339,9 +339,8 @@ body::before {
 .error-banner.show { display: flex; }
 
 /* ---- LAST UPDATED ---- */
-.footer {
-  text-align: center;
-  padding: 20px 20px 40px;
+.hero-footer {
+  margin-top: 14px;
   font-family: 'DM Mono', monospace;
   font-size: 0.65rem;
   color: var(--text-mute);
@@ -407,6 +406,7 @@ body::before {
         <div class="hero-stat-label">Scanned</div>
       </div>
     </div>
+    <div class="hero-footer" id="footer">Last updated: --</div>
   </div>
 
   <div class="section fade-in delay-2">
@@ -433,9 +433,6 @@ body::before {
     </div>
   </div>
 
-  <div class="footer" id="footer">
-    Last updated: --
-  </div>
 </div>
 
 <script>
@@ -488,7 +485,7 @@ body::before {
           </div>`;
         container.appendChild(row);
       }
-      row.querySelector('.stat-name').textContent = item.name || 'Unknown';
+      row.querySelector('.stat-name').textContent = (item.name === 'Unknown' ? '(Unmatched)' : item.name) || '(Unmatched)';
       const valEl = row.querySelector('.stat-value');
       if (hasReg) {
         valEl.classList.add('has-registered');
