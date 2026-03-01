@@ -238,6 +238,24 @@ body::before {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 70%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stat-name .status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.stat-status {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.65rem;
+  color: var(--text-mute);
+  margin-left: auto;
+  white-space: nowrap;
 }
 
 .stat-value {
@@ -363,47 +381,10 @@ body::before {
 .delay-4 { animation-delay: 0.2s; }
 .delay-5 { animation-delay: 0.25s; }
 
-/* ---- STATION STATUS ---- */
-.status-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px 16px;
-  margin-bottom: 6px;
-}
-
-.status-row-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
+/* ---- STATUS DOTS (used in station rows) ---- */
 .status-dot.ready { background: var(--green); }
 .status-dot.pending { background: #f5a623; }
 .status-dot.offline { background: var(--text-mute); }
-
-.status-name {
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: var(--text);
-}
-
-.status-info {
-  font-family: 'DM Mono', monospace;
-  font-size: 0.7rem;
-  color: var(--text-mute);
-  text-align: right;
-}
 
 /* ---- DESKTOP ---- */
 @media (min-width: 640px) {
@@ -475,13 +456,6 @@ body::before {
     </div>
   </div>
 
-  <div class="section fade-in delay-4" id="stationStatusSection" style="display:none">
-    <div class="section-header">
-      <span class="section-title">Station Status</span>
-      <span class="section-count" id="stationStatusCount">--</span>
-    </div>
-    <div id="stationStatusList"></div>
-  </div>
 
 </div>
 
@@ -495,6 +469,7 @@ body::before {
   let lastData = null;
   let isFirstLoad = true;
   let consecutiveErrors = 0;
+  let stationStatusMap = {};
 
   const $ = id => document.getElementById(id);
 
@@ -515,7 +490,13 @@ body::before {
     tick();
   }
 
-  function renderRows(container, items, maxValue, useRegistered) {
+  function formatAgo(s) {
+    if (s < 60) return s + 's ago';
+    if (s < 3600) return Math.floor(s / 60) + 'm ago';
+    return Math.floor(s / 3600) + 'h ago';
+  }
+
+  function renderRows(container, items, maxValue, useRegistered, statusMap) {
     const existing = container.children;
     items.forEach((item, i) => {
       const hasReg = useRegistered && item.registered > 0;
@@ -535,7 +516,15 @@ body::before {
           </div>`;
         container.appendChild(row);
       }
-      row.querySelector('.stat-name').textContent = (item.name === 'Unknown' ? '(Unmatched)' : item.name) || '(Unmatched)';
+      const nameEl = row.querySelector('.stat-name');
+      const displayName = (item.name === 'Unknown' ? '(Unmatched)' : item.name) || '(Unmatched)';
+      const st = statusMap && statusMap[item.name];
+      if (st) {
+        nameEl.innerHTML = '<span class="status-dot ' + st.status + '"></span>' +
+          displayName + '<span class="stat-status">' + formatAgo(st.seconds_ago) + '</span>';
+      } else {
+        nameEl.textContent = displayName;
+      }
       const valEl = row.querySelector('.stat-value');
       if (hasReg) {
         valEl.classList.add('has-registered');
@@ -577,12 +566,12 @@ body::before {
     $('heroRegistered').textContent = totalReg.toLocaleString();
     $('heroScanned').textContent = uniqueBadges.toLocaleString();
 
-    // Stations
+    // Stations (merged with status)
     const stations = data.stations || [];
     const maxStation = stations.reduce((m, s) => Math.max(m, s.unique), 0);
     $('stationCount').textContent = stations.length + (stations.length === 1 ? ' station' : ' stations');
     $('stationEmpty').style.display = stations.length ? 'none' : 'block';
-    renderRows($('stationList'), stations, maxStation);
+    renderRows($('stationList'), stations, maxStation, false, stationStatusMap);
 
     // Business units
     const bus = data.business_units || [];
@@ -648,40 +637,20 @@ body::before {
   // Station status
   const STATUS_API = '../v1/stations/status';
 
-  function formatAgo(s) {
-    if (s < 60) return s + 's ago';
-    if (s < 3600) return Math.floor(s / 60) + 'm ago';
-    return Math.floor(s / 3600) + 'h ago';
-  }
-
   async function fetchStationStatus() {
     try {
       const res = await fetch(STATUS_API);
       if (!res.ok) return;
       const data = await res.json();
       const stations = data.stations || [];
-      const section = $('stationStatusSection');
-      if (!stations.length) { section.style.display = 'none'; return; }
-
-      section.style.display = 'block';
-      const ready = stations.filter(s => s.status === 'ready').length;
-      $('stationStatusCount').textContent = ready + '/' + stations.length + ' ready';
-
-      const list = $('stationStatusList');
-      list.innerHTML = '';
-      stations.forEach(s => {
-        const row = document.createElement('div');
-        row.className = 'status-row';
-        const label = s.status === 'ready' ? 'Ready' : s.status === 'pending' ? 'Pending' : 'Offline';
-        const info = s.status === 'offline' ? label : label + ' · ' + formatAgo(s.seconds_ago);
-        row.innerHTML = `
-          <div class="status-row-left">
-            <div class="status-dot ${s.status}"></div>
-            <div class="status-name">${s.station_name}</div>
-          </div>
-          <div class="status-info">${info}</div>`;
-        list.appendChild(row);
-      });
+      stationStatusMap = {};
+      stations.forEach(s => { stationStatusMap[s.station_name] = s; });
+      // Re-render station rows with updated status
+      if (lastData) {
+        const stList = lastData.stations || [];
+        const maxStation = stList.reduce((m, s) => Math.max(m, s.unique), 0);
+        renderRows($('stationList'), stList, maxStation, false, stationStatusMap);
+      }
     } catch (e) { /* silent */ }
   }
 
