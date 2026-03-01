@@ -449,12 +449,12 @@ app.get("/v1/dashboard/stats", async (req, reply) => {
 
     const buResult = await client.query(`
       SELECT
-        COALESCE(bu, 'Unknown') as business_unit,
+        COALESCE(s.bu, r.business_unit, 'Unknown') as business_unit,
         COALESCE(r.registered, 0) as registered,
         COUNT(DISTINCT s.badge_id) as unique_badges
       FROM (SELECT *, COALESCE(business_unit, 'Unknown') as bu FROM scans) s
       FULL OUTER JOIN roster_summary r ON s.bu = r.business_unit
-      GROUP BY COALESCE(bu, 'Unknown'), r.registered
+      GROUP BY COALESCE(s.bu, r.business_unit, 'Unknown'), r.registered
       ORDER BY unique_badges DESC
     `);
 
@@ -517,12 +517,12 @@ app.get("/v1/dashboard/public/stats", {
 
     const buResult = await client.query(`
       SELECT
-        COALESCE(bu, 'Unknown') as business_unit,
+        COALESCE(s.bu, r.business_unit, 'Unknown') as business_unit,
         COALESCE(r.registered, 0) as registered,
         COUNT(DISTINCT s.badge_id) as unique_badges
       FROM (SELECT *, COALESCE(business_unit, 'Unknown') as bu FROM scans) s
       FULL OUTER JOIN roster_summary r ON s.bu = r.business_unit
-      GROUP BY COALESCE(bu, 'Unknown'), r.registered
+      GROUP BY COALESCE(s.bu, r.business_unit, 'Unknown'), r.registered
       ORDER BY unique_badges DESC
     `);
 
