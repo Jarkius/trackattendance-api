@@ -797,7 +797,6 @@ app.get("/v1/stations/status", {
     const stationsResult = await client.query(`
       SELECT station_name, last_clear_epoch, local_scan_count, last_seen_at
       FROM station_heartbeat
-      WHERE last_seen_at > NOW() - INTERVAL '5 minutes'
       ORDER BY station_name
     `);
 
@@ -815,6 +814,7 @@ app.get("/v1/stations/status", {
         last_clear_epoch: row.last_clear_epoch,
         local_scan_count: parseInt(row.local_scan_count),
         seconds_ago: secondsAgo,
+        last_seen_at: row.last_seen_at,
       };
     });
 
