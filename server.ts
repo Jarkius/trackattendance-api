@@ -477,7 +477,7 @@ app.get("/v1/dashboard/stats", async (req, reply) => {
         MAX(scanned_at) as last_scan
       FROM scans
       GROUP BY station_name
-      ORDER BY total_scans DESC
+      ORDER BY station_name ASC
     `);
 
     const buResult = await client.query(`
@@ -488,7 +488,7 @@ app.get("/v1/dashboard/stats", async (req, reply) => {
       FROM (SELECT *, COALESCE(business_unit, 'Unmatched') as bu FROM scans) s
       FULL OUTER JOIN roster_summary r ON s.bu = r.business_unit
       GROUP BY COALESCE(s.bu, r.business_unit, 'Unmatched'), r.registered
-      ORDER BY unique_badges DESC
+      ORDER BY CASE WHEN COALESCE(s.bu, r.business_unit, 'Unmatched') = 'Unmatched' THEN 1 ELSE 0 END, COALESCE(s.bu, r.business_unit, 'Unmatched') ASC
     `);
 
     const summary = summaryResult.rows[0];
@@ -545,7 +545,7 @@ app.get("/v1/dashboard/public/stats", {
         COUNT(DISTINCT badge_id) as unique_badges
       FROM scans
       GROUP BY station_name
-      ORDER BY unique_badges DESC
+      ORDER BY station_name ASC
     `);
 
     const buResult = await client.query(`
@@ -556,7 +556,7 @@ app.get("/v1/dashboard/public/stats", {
       FROM (SELECT *, COALESCE(business_unit, 'Unmatched') as bu FROM scans) s
       FULL OUTER JOIN roster_summary r ON s.bu = r.business_unit
       GROUP BY COALESCE(s.bu, r.business_unit, 'Unmatched'), r.registered
-      ORDER BY unique_badges DESC
+      ORDER BY CASE WHEN COALESCE(s.bu, r.business_unit, 'Unmatched') = 'Unmatched' THEN 1 ELSE 0 END, COALESCE(s.bu, r.business_unit, 'Unmatched') ASC
     `);
 
     const summary = summaryResult.rows[0];
