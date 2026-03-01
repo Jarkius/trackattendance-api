@@ -731,8 +731,9 @@ app.delete("/v1/admin/clear-station", async (req, reply) => {
     const deletedCount = parseInt(countResult.rows[0].count);
 
     await client.query("DELETE FROM scans WHERE station_name = $1", [station]);
+    await client.query("DELETE FROM station_heartbeat WHERE station_name = $1", [station]);
 
-    app.log.info(`Admin: Cleared ${deletedCount} scans for station "${station}"`);
+    app.log.info(`Admin: Cleared ${deletedCount} scans + heartbeat for station "${station}"`);
 
     return {
       ok: true,
