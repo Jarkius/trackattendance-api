@@ -411,6 +411,37 @@ html.light .error-banner {
   border-color: #e8443a30;
 }
 
+/* ---- PULL TO REFRESH ---- */
+.ptr-indicator {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%) translateY(-44px);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  transition: opacity 0.2s ease;
+  opacity: 0;
+  pointer-events: none;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+}
+.ptr-indicator.visible { opacity: 1; }
+.ptr-indicator.refreshing { opacity: 1; }
+.ptr-indicator svg {
+  width: 18px;
+  height: 18px;
+  color: var(--green);
+}
+.ptr-indicator.refreshing svg {
+  animation: spin 0.8s linear infinite;
+}
+
 /* ---- THEME TOGGLE ---- */
 .theme-toggle {
   width: 32px;
@@ -450,6 +481,8 @@ html.light .error-banner {
   <div class="loading-text">Connecting...</div>
 </div>
 
+<div class="ptr-indicator" id="ptrIndicator"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg></div>
+
 <div id="dashboard" style="display:none">
   <div class="error-banner" id="errorBanner">
     <span>&#9888;</span>
@@ -462,12 +495,17 @@ html.light .error-banner {
     <div class="hero-stats">
       <div class="hero-stat">
         <div class="hero-stat-value" id="heroScanned">--</div>
-        <div class="hero-stat-label">Scanned</div>
+        <div class="hero-stat-label">Unique</div>
+      </div>
+      <div class="hero-stat-divider"></div>
+      <div class="hero-stat">
+        <div class="hero-stat-value" id="heroTotalScans">--</div>
+        <div class="hero-stat-label">Scans</div>
       </div>
       <div class="hero-stat-divider"></div>
       <div class="hero-stat">
         <div class="hero-stat-value" id="heroRegistered">--</div>
-        <div class="hero-stat-label">Total</div>
+        <div class="hero-stat-label">Registered</div>
       </div>
     </div>
     <div class="hero-footer" id="footer">Last updated: --</div>
@@ -629,9 +667,12 @@ html.light .error-banner {
     const uniqueBadges = data.unique_badges || 0;
     const rate = totalReg > 0 ? (uniqueBadges / totalReg * 100) : 0;
 
+    const totalScans = data.total_scans || 0;
+
     $('heroRate').textContent = totalReg > 0 ? rate.toFixed(1) + '%' : '--';
-    $('heroRegistered').textContent = totalReg.toLocaleString();
     $('heroScanned').textContent = uniqueBadges.toLocaleString();
+    $('heroTotalScans').textContent = totalScans.toLocaleString();
+    $('heroRegistered').textContent = totalReg.toLocaleString();
 
     // Stations (merged with status)
     const stations = data.stations || [];
@@ -720,6 +761,56 @@ html.light .error-banner {
       }
     } catch (e) { /* silent */ }
   }
+
+  // ---- Pull to refresh ----
+  var ptrStartY = 0, ptrActive = false, ptrRefreshing = false;
+  var ptrEl = $('ptrIndicator');
+  var PTR_THRESHOLD = 60;
+
+  document.addEventListener('touchstart', function(e) {
+    if (window.scrollY === 0 && !ptrRefreshing) {
+      ptrStartY = e.touches[0].clientY;
+      ptrActive = true;
+    }
+  }, { passive: true });
+
+  document.addEventListener('touchmove', function(e) {
+    if (!ptrActive || ptrRefreshing) return;
+    var dy = e.touches[0].clientY - ptrStartY;
+    if (dy < 0) { ptrActive = false; return; }
+    var progress = Math.min(dy / PTR_THRESHOLD, 1);
+    var translateY = -44 + (60 * progress);
+    ptrEl.style.transform = 'translateX(-50%) translateY(' + translateY + 'px)';
+    ptrEl.classList.toggle('visible', dy > 10);
+    // Rotate arrow proportionally
+    ptrEl.querySelector('svg').style.transform = 'rotate(' + (progress * 180) + 'deg)';
+  }, { passive: true });
+
+  document.addEventListener('touchend', function() {
+    if (!ptrActive) return;
+    ptrActive = false;
+    var wasVisible = ptrEl.classList.contains('visible');
+    var currentY = parseFloat(ptrEl.style.transform.split('translateY(')[1]) || -44;
+    if (wasVisible && currentY >= 12) {
+      // Trigger refresh
+      ptrRefreshing = true;
+      ptrEl.style.transform = 'translateX(-50%) translateY(16px)';
+      ptrEl.classList.add('refreshing');
+      ptrEl.querySelector('svg').style.transform = '';
+      Promise.all([fetchData(), fetchStationStatus()]).then(function() {
+        countdown = POLL_INTERVAL;
+        $('countdown').textContent = countdown + 's';
+      }).finally(function() {
+        ptrRefreshing = false;
+        ptrEl.classList.remove('refreshing', 'visible');
+        ptrEl.style.transform = 'translateX(-50%) translateY(-44px)';
+      });
+    } else {
+      ptrEl.classList.remove('visible');
+      ptrEl.style.transform = 'translateX(-50%) translateY(-44px)';
+      ptrEl.querySelector('svg').style.transform = '';
+    }
+  }, { passive: true });
 
   // Init
   fetchData().then(startTimer);
