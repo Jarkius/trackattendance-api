@@ -389,8 +389,26 @@ body::before {
 /* ---- DESKTOP ---- */
 @media (min-width: 640px) {
   .hero-number { font-size: 6.5rem; }
-  .section { max-width: 540px; margin: 0 auto; }
-  .hero { max-width: 540px; margin: 0 auto; }
+  .section { max-width: 600px; margin: 0 auto; }
+  .hero { max-width: 600px; margin: 0 auto; }
+}
+
+/* ---- WIDE / TV ---- */
+@media (min-width: 1024px) {
+  .hero-number { font-size: 8rem; }
+  .hero-stat-value { font-size: 1.6rem; }
+  .hero { max-width: 900px; margin: 0 auto; padding: 40px 20px 32px; }
+  .sections-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 24px;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  .sections-grid .section { max-width: none; }
+  .stat-name { font-size: 0.95rem; }
+  .topbar { padding: 16px 24px; }
+  .topbar-title { font-size: 0.85rem; }
 }
 
 /* ---- LIGHT THEME ---- */
@@ -511,27 +529,29 @@ html.light .error-banner {
     <div class="hero-footer" id="footer">Last updated: --</div>
   </div>
 
-  <div class="section fade-in delay-2">
-    <div class="section-header">
-      <span class="section-title">Business Units</span>
-      <span class="section-count" id="buCount">0</span>
+  <div class="sections-grid">
+    <div class="section fade-in delay-2">
+      <div class="section-header">
+        <span class="section-title">Business Units</span>
+        <span class="section-count" id="buCount">0</span>
+      </div>
+      <div id="buList"></div>
+      <div class="empty" id="buEmpty" style="display:none">
+        <div class="empty-icon">&#9632;</div>
+        No business unit data yet
+      </div>
     </div>
-    <div id="buList"></div>
-    <div class="empty" id="buEmpty" style="display:none">
-      <div class="empty-icon">&#9632;</div>
-      No business unit data yet
-    </div>
-  </div>
 
-  <div class="section fade-in delay-3">
-    <div class="section-header">
-      <span class="section-title">Stations</span>
-      <span class="section-count" id="stationCount">0</span>
-    </div>
-    <div id="stationList"></div>
-    <div class="empty" id="stationEmpty" style="display:none">
-      <div class="empty-icon">&#9723;</div>
-      No station data yet
+    <div class="section fade-in delay-3">
+      <div class="section-header">
+        <span class="section-title">Stations</span>
+        <span class="section-count" id="stationCount">0</span>
+      </div>
+      <div id="stationList"></div>
+      <div class="empty" id="stationEmpty" style="display:none">
+        <div class="empty-icon">&#9723;</div>
+        No station data yet
+      </div>
     </div>
   </div>
 
