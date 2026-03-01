@@ -114,6 +114,9 @@ try {
       value TEXT NOT NULL
     )
   `);
+  await client.query(`
+    ALTER TABLE scans ADD COLUMN IF NOT EXISTS scan_source TEXT NOT NULL DEFAULT 'badge'
+  `);
   client.release();
   app.log.info("Database migration check complete");
 } catch (err) {
@@ -354,6 +357,7 @@ app.post<BatchRequest>("/v1/scans/batch", { schema: batchSchema }, async (req, r
     const scannedAts: Date[] = [];
     const metas: any[] = [];
     const businessUnits: (string | null)[] = [];
+    const scanSources: string[] = [];
 
     for (const ev of events) {
       keys.push(ev.idempotency_key);
@@ -367,11 +371,12 @@ app.post<BatchRequest>("/v1/scans/batch", { schema: batchSchema }, async (req, r
       scannedAts.push(date);
       metas.push(ev.meta ?? null);
       businessUnits.push(ev.business_unit ?? null);
+      scanSources.push(ev.scan_source ?? "badge");
     }
 
     const insertSql = `
       insert into scans
-        (idempotency_key, badge_id, station_name, scanned_at, meta, business_unit)
+        (idempotency_key, badge_id, station_name, scanned_at, meta, business_unit, scan_source)
       select *
       from unnest(
         $1::text[],
@@ -379,7 +384,8 @@ app.post<BatchRequest>("/v1/scans/batch", { schema: batchSchema }, async (req, r
         $3::text[],
         $4::timestamptz[],
         $5::jsonb[],
-        $6::text[]
+        $6::text[],
+        $7::text[]
       )
       on conflict (idempotency_key) do nothing
       returning idempotency_key
@@ -392,6 +398,7 @@ app.post<BatchRequest>("/v1/scans/batch", { schema: batchSchema }, async (req, r
       scannedAts,
       metas,
       businessUnits,
+      scanSources,
     ]);
 
     await client.query("commit");
@@ -574,7 +581,8 @@ app.get<ExportQuery>("/v1/dashboard/export", async (req, reply) => {
         station_name,
         scanned_at,
         meta->>'matched' as matched,
-        business_unit
+        business_unit,
+        scan_source
       FROM scans
       ORDER BY scanned_at DESC
       LIMIT $1
@@ -586,6 +594,7 @@ app.get<ExportQuery>("/v1/dashboard/export", async (req, reply) => {
       scanned_at: row.scanned_at ? new Date(row.scanned_at).toISOString() : null,
       matched: row.matched === 'true',
       business_unit: row.business_unit || null,
+      scan_source: row.scan_source || 'badge',
     }));
 
     return {
