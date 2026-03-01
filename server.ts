@@ -793,14 +793,10 @@ app.get("/v1/stations/status", {
     const epochResult = await client.query("SELECT value FROM roster_meta WHERE key = 'clear_epoch'");
     const clear_epoch = epochResult.rows[0]?.value || null;
 
-    // Auto-purge stations offline for more than 1 hour
-    await client.query(`
-      DELETE FROM station_heartbeat WHERE last_seen_at < NOW() - INTERVAL '1 hour'
-    `);
-
     const stationsResult = await client.query(`
       SELECT station_name, last_clear_epoch, local_scan_count, last_seen_at
       FROM station_heartbeat
+      WHERE last_seen_at > NOW() - INTERVAL '5 minutes'
       ORDER BY station_name
     `);
 
