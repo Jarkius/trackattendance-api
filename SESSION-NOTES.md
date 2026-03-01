@@ -427,12 +427,10 @@ Strategic migration of Track Attendance API from local development to Google Clo
 ┌─────────────────────────────────────────────────────────────┐
 │                    Google Cloud Platform                      │
 ├─────────────────────────────────────────────────────────────┤
-│  GitHub Repository → Cloud Build → Container Registry → Cloud Run │
+│  GitHub Actions → Docker Build → Artifact Registry → Cloud Run  │
 │         │                 │                │               │
-│         │                 │                │               │
-│    git push           docker build      gcr.io/api        http://api.domain.com │
-│         │                 │                │               │
-│         ▼                 ▼                ▼               ▼               │
+│    git push       docker build   pkg.dev/api     Cloud Run svc  │
+│         ▼                 ▼                ▼               ▼    │
 │  Source Code → Docker Image → Container Image → Running Service │
 └─────────────────────────────────────────────────────────────┘
 
@@ -539,32 +537,10 @@ EXPOSE 5000
 CMD ["npm", "start"]
 ```
 
-#### **Cloud Run Service Configuration**
-```yaml
-# cloudbuild.yaml
-steps:
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/trackattendance-api', '.']
-
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: 'gcloud'
-    args: [
-      'run', 'deploy', 'trackattendance-api',
-      '--image', 'gcr.io/$PROJECT_ID/trackattendance-api',
-      '--region', 'us-central1',
-      '--platform', 'managed',
-      '--allow-unauthenticated',
-      '--memory', '512Mi',
-      '--cpu', '1',
-      '--max-instances', '10',
-      '--min-instances', '0',
-      '--set-env-vars', 'DATABASE_URL=$$DATABASE_URL',
-      '--set-secrets', 'API_KEY=$$API_KEY'
-    ]
-
-options:
-  logging: CLOUD_LOGGING_ONLY
-```
+#### **Cloud Run Deployment (GitHub Actions)**
+> **Note:** Deployment is handled by `.github/workflows/deploy.yml` using GitHub Actions
+> with Artifact Registry (`asia-southeast1-docker.pkg.dev`). The legacy `cloudbuild.yaml`
+> and `gcr.io` Container Registry have been removed.
 
 #### **Production Environment Variables**
 ```bash
@@ -581,9 +557,8 @@ LOG_LEVEL=info
 #### **Required Google Cloud APIs**
 ```bash
 # Enable required APIs
-gcloud services enable cloudbuild.googleapis.com
 gcloud services enable run.googleapis.com
-gcloud services enable containerregistry.googleapis.com
+gcloud services enable artifactregistry.googleapis.com
 gcloud services enable monitoring.googleapis.com
 gcloud services enable logging.googleapis.com
 ```
@@ -655,13 +630,12 @@ concurrency: 100 (requests per instance)
 
 ### 🔄 CI/CD Pipeline Workflow
 
-#### **GitHub → Cloud Build → Cloud Run**
-1. **Push to GitHub** → Triggers Cloud Build
-2. **Automated Build** → Creates Docker image
-3. **Image Registry** → Stores in Google Container Registry
-4. **Automated Deploy** → Deploys to Cloud Run
-5. **Health Checks** → Verifies deployment success
-6. **Rollback** → Automatic on health check failures
+#### **GitHub → GitHub Actions → Cloud Run**
+1. **Push to main** → Triggers GitHub Actions workflow
+2. **Type Check** → `tsc --noEmit` validation
+3. **Build & Push** → Docker image to Artifact Registry (`asia-southeast1-docker.pkg.dev`)
+4. **Deploy** → `gcloud run deploy` to Cloud Run (asia-southeast1)
+5. **Verify** → Health check on deployed URL
 
 #### **Branch Strategy**
 - **main**: Production deployment with manual approval
@@ -760,7 +734,7 @@ This Cloud Run deployment plan provides a comprehensive roadmap for migrating th
 
 **Infrastructure Preparation:**
 - ✅ Enhanced Dockerfile with multi-stage build for production
-- ✅ Created Cloud Build configuration (cloudbuild.yaml)
+- ✅ Created GitHub Actions CI/CD workflow (`.github/workflows/deploy.yml`)
 - ✅ TypeScript build validation (successful)
 - ✅ Comprehensive deployment documentation
 - ✅ Git commit with all deployment configuration files
@@ -770,7 +744,7 @@ This Cloud Run deployment plan provides a comprehensive roadmap for migrating th
 **Ready for Google Cloud Setup:**
 - ⏳ Docker testing (requires Docker Desktop installation)
 - ⏳ Google Cloud CLI setup and project initialization
-- ⏳ Cloud Build and Container Registry configuration
+- ✅ GitHub Actions and Artifact Registry configuration
 
 ### 📋 Setup Requirements Checklist
 
@@ -833,9 +807,10 @@ export API_KEY="your-secure-api-key"
    gcloud services enable run.googleapis.com cloudbuild.googleapis.com
    ```
 
-3. **First Container Build**
+3. **First Deployment**
    ```bash
-   gcloud builds submit --tag gcr.io/$PROJECT_ID/trackattendance-api:latest
+   # Push to main branch — GitHub Actions handles build & deploy automatically
+   git push origin main
    ```
 
 ### 📝 Notes
@@ -843,7 +818,7 @@ export API_KEY="your-secure-api-key"
 - All configuration files are ready and committed to Git
 - TypeScript build passes successfully
 - Dockerfile optimized for Cloud Run with health checks
-- Cloud Build configuration automated for CI/CD
+- GitHub Actions CI/CD pipeline automated for deployment
 - Current development server running locally (npm run dev)
 
 **Current Environment:** Local development ready for cloud migration
