@@ -406,11 +406,6 @@ body::before {
         <div class="hero-stat-value" id="heroScanned">--</div>
         <div class="hero-stat-label">Scanned</div>
       </div>
-      <div class="hero-stat-divider"></div>
-      <div class="hero-stat">
-        <div class="hero-stat-value" id="heroTotalScans">--</div>
-        <div class="hero-stat-label">Total Scans</div>
-      </div>
     </div>
   </div>
 
@@ -534,7 +529,6 @@ body::before {
     $('heroRate').textContent = totalReg > 0 ? rate.toFixed(1) + '%' : '--';
     $('heroRegistered').textContent = totalReg.toLocaleString();
     $('heroScanned').textContent = uniqueBadges.toLocaleString();
-    $('heroTotalScans').textContent = (data.total_scans || 0).toLocaleString();
 
     // Stations
     const stations = data.stations || [];
