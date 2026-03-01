@@ -230,6 +230,7 @@ const batchSchema = {
             scanned_at: { type: "string", format: "date-time" },
             meta: { type: ["object", "null"] },
             business_unit: { type: ["string", "null"], maxLength: 256 },
+            scan_source: { type: ["string", "null"], maxLength: 32 },
           },
           additionalProperties: false,
         },
