@@ -15,7 +15,10 @@ Designed for seamless integration with offline QR scanning stations, capturing b
 - **Public mobile attendance dashboard** - no auth required, auto-refreshes every 30s
 - **Roster summary sync** endpoint with hash-based deduplication
 - **Dashboard stats endpoints** - authenticated (with station and BU breakdown) and public (rate-limited)
-- **Admin clear-scans endpoint** - PIN-protected via `X-Confirm-Delete` header
+- **Admin clear-scans endpoint** - PIN-protected via `X-Confirm-Delete` header (clears all stations + roster)
+- **Admin clear-station endpoint** - delete scans for a single station only
+- **Station heartbeat & status** - stations report liveness via `POST /v1/stations/heartbeat`; status visible on mobile dashboard (ready/pending/offline)
+- **Scan source tracking** - `badge`, `lookup`, or `manual` stored per scan event
 - **Meta field sanitization** - max 20 properties enforced, per-value size limits applied
 - **DB pool eager connection test** at startup to detect misconfiguration early
 - JSON schema validation and Fastify logging for observability
@@ -70,8 +73,11 @@ psql "$DATABASE_URL" -f Postgres-schema.sql
 - `GET /v1/dashboard/export` - authenticated scan export
 - `POST /v1/roster/summary` - sync roster BU counts (with hash-based deduplication)
 - `GET /v1/roster/hash` - check current roster hash
-- `DELETE /v1/admin/clear-scans` - clear all scans (requires `X-Confirm-Delete` header)
-- `GET /dashboard/` - public mobile dashboard HTML page
+- `DELETE /v1/admin/clear-scans` - clear all scans + roster + set clear_epoch (requires `X-Confirm-Delete` header)
+- `DELETE /v1/admin/clear-station?station=Name` - clear scans for one station (requires `X-Confirm-Delete` header)
+- `POST /v1/stations/heartbeat` - station liveness report (unauthenticated)
+- `GET /v1/stations/status` - all station statuses with ready/pending/offline (unauthenticated)
+- `GET /dashboard/` - public mobile dashboard HTML page (light/dark theme, auto-refresh)
 
 ### Request Format
 
@@ -102,6 +108,7 @@ psql "$DATABASE_URL" -f Postgres-schema.sql
 | `station_name` | string | ✓ | Scanning station location name |
 | `scanned_at` | string | ✓ | ISO8601 UTC timestamp (format: `YYYY-MM-DDTHH:MM:SSZ`) |
 | `business_unit` | string | - | Business unit of the employee being scanned (optional) |
+| `scan_source` | string | - | How the scan was captured: `badge`, `lookup`, or `manual` (default: `manual`) |
 | `meta` | object | - | Additional context (does NOT contain employee names/PII; max 20 properties) |
 
 ### Response Format
@@ -118,7 +125,7 @@ psql "$DATABASE_URL" -f Postgres-schema.sql
 - `server.ts` — Fastify entry point and route wiring.
 - `dist/` — generated JavaScript output; do not edit manually.
 - `public/index.html` — Mobile attendance dashboard (single-file, vanilla JS).
-- `Postgres-schema.sql` — authoritative schema; includes `scans`, `roster_summary`, and `roster_meta` tables.
+- `Postgres-schema.sql` — authoritative schema; includes `scans`, `roster_summary`, `roster_meta`, and `station_heartbeat` tables.
 - `AGENTS.md` — contributor guidelines and workflow expectations.
 
 ## Testing
