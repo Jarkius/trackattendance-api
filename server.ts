@@ -528,18 +528,23 @@ app.get("/v1/dashboard/public/stats", {
 
     const summary = summaryResult.rows[0];
 
+    const buRows = buResult.rows.map(row => ({
+      name: row.business_unit,
+      registered: parseInt(row.registered) || 0,
+      unique: parseInt(row.unique_badges) || 0,
+    }));
+
+    const total_registered = buRows.reduce((sum, b) => sum + b.registered, 0);
+
     return {
       total_scans: parseInt(summary.total_scans),
       unique_badges: parseInt(summary.unique_badges),
+      total_registered,
       stations: stationsResult.rows.map(row => ({
         name: row.station_name,
         unique: parseInt(row.unique_badges),
       })),
-      business_units: buResult.rows.map(row => ({
-        name: row.business_unit,
-        registered: parseInt(row.registered) || 0,
-        unique: parseInt(row.unique_badges) || 0,
-      })),
+      business_units: buRows,
       timestamp: new Date().toISOString(),
     };
   } catch (e: any) {

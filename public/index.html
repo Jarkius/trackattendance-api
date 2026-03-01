@@ -145,16 +145,40 @@ body::before {
   transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.hero-sub {
-  margin-top: 10px;
-  font-family: 'DM Mono', monospace;
-  font-size: 0.75rem;
-  color: var(--text-dim);
+.hero-stats {
+  margin-top: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
 }
 
-.hero-sub span {
-  color: var(--text);
+.hero-stat {
+  flex: 1;
+  text-align: center;
+}
+
+.hero-stat-value {
+  font-family: 'DM Mono', monospace;
+  font-size: 1.3rem;
   font-weight: 500;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.hero-stat-label {
+  font-size: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+  margin-top: 4px;
+}
+
+.hero-stat-divider {
+  width: 1px;
+  height: 32px;
+  background: var(--border);
 }
 
 /* ---- SECTION ---- */
@@ -370,10 +394,23 @@ body::before {
   </div>
 
   <div class="hero fade-in">
-    <div class="hero-label">Unique Check-ins</div>
-    <div class="hero-number" id="heroNumber">0</div>
-    <div class="hero-sub">
-      <span id="totalScans">0</span> total scans
+    <div class="hero-label">Attendance Rate</div>
+    <div class="hero-number" id="heroRate">--</div>
+    <div class="hero-stats">
+      <div class="hero-stat">
+        <div class="hero-stat-value" id="heroRegistered">--</div>
+        <div class="hero-stat-label">Total</div>
+      </div>
+      <div class="hero-stat-divider"></div>
+      <div class="hero-stat">
+        <div class="hero-stat-value" id="heroScanned">--</div>
+        <div class="hero-stat-label">Scanned</div>
+      </div>
+      <div class="hero-stat-divider"></div>
+      <div class="hero-stat">
+        <div class="hero-stat-value" id="heroTotalScans">--</div>
+        <div class="hero-stat-label">Total Scans</div>
+      </div>
     </div>
   </div>
 
@@ -490,8 +527,14 @@ body::before {
     $('loadingScreen').style.display = 'none';
     $('dashboard').style.display = 'block';
 
-    animateNumber($('heroNumber'), data.unique_badges);
-    animateNumber($('totalScans'), data.total_scans);
+    const totalReg = data.total_registered || 0;
+    const uniqueBadges = data.unique_badges || 0;
+    const rate = totalReg > 0 ? (uniqueBadges / totalReg * 100) : 0;
+
+    $('heroRate').textContent = totalReg > 0 ? rate.toFixed(1) + '%' : '--';
+    $('heroRegistered').textContent = totalReg.toLocaleString();
+    $('heroScanned').textContent = uniqueBadges.toLocaleString();
+    $('heroTotalScans').textContent = (data.total_scans || 0).toLocaleString();
 
     // Stations
     const stations = data.stations || [];
