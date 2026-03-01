@@ -394,7 +394,9 @@ app.post<BatchRequest>("/v1/scans/batch", { schema: batchSchema }, async (req, r
       scannedAts.push(date);
       metas.push(ev.meta ?? null);
       businessUnits.push(ev.business_unit ?? null);
-      scanSources.push(ev.scan_source ?? "manual");
+      const src = ev.scan_source ?? "manual";
+      scanSources.push(src);
+      app.log.info(`[Sync] badge=${ev.badge_id} scan_source=${src} (raw=${ev.scan_source})`);
     }
 
     const insertSql = `
