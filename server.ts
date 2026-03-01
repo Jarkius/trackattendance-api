@@ -117,6 +117,14 @@ try {
   await client.query(`
     ALTER TABLE scans ADD COLUMN IF NOT EXISTS scan_source TEXT NOT NULL DEFAULT 'badge'
   `);
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS station_heartbeat (
+      station_name      TEXT PRIMARY KEY,
+      last_clear_epoch  TEXT,
+      local_scan_count  INTEGER NOT NULL DEFAULT 0,
+      last_seen_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
   client.release();
   app.log.info("Database migration check complete");
 } catch (err) {
@@ -157,18 +165,29 @@ app.get("/healthz", { config: { rateLimit: false } }, async () => {
   }
 });
 
-app.get("/", { config: { rateLimit: false } }, async () => ({
-  status: "ok",
-  service: "Track Attendance API",
-  version: "1.1.0",
-  timestamp: new Date().toISOString()
-}));
+app.get("/", { config: { rateLimit: false } }, async () => {
+  let clear_epoch: string | null = null;
+  try {
+    const client = await pool.connect();
+    const result = await client.query("SELECT value FROM roster_meta WHERE key = 'clear_epoch'");
+    clear_epoch = result.rows[0]?.value || null;
+    client.release();
+  } catch { /* non-fatal */ }
+  return {
+    status: "ok",
+    service: "Track Attendance API",
+    version: "1.2.0",
+    clear_epoch,
+    timestamp: new Date().toISOString(),
+  };
+});
 
 // ---- auth middleware ----
 app.addHook("onRequest", async (req, reply) => {
   // Bypass authentication for health checks and public endpoints
   if (req.url === "/healthz" || req.url === "/") return;
   if (req.url.startsWith("/v1/dashboard/public")) return;
+  if (req.url.startsWith("/v1/stations/status")) return;
   if (req.url.startsWith("/dashboard/")) return;
 
   const auth = req.headers.authorization || "";
@@ -645,17 +664,29 @@ app.delete("/v1/admin/clear-scans", async (req, reply) => {
     const countResult = await client.query("SELECT COUNT(*) as count FROM scans");
     const deletedCount = parseInt(countResult.rows[0].count);
 
+    await client.query("BEGIN");
     await client.query("TRUNCATE TABLE scans");
+    await client.query("TRUNCATE TABLE roster_summary");
+    const clearEpoch = new Date().toISOString();
+    await client.query(`
+      INSERT INTO roster_meta (key, value) VALUES ('clear_epoch', $1)
+      ON CONFLICT (key) DO UPDATE SET value = $1
+    `, [clearEpoch]);
+    // Reset roster hash so next import will re-upload
+    await client.query("DELETE FROM roster_meta WHERE key = 'hash'");
+    await client.query("COMMIT");
 
-    app.log.info(`Admin: Cleared ${deletedCount} scans from cloud database`);
+    app.log.info(`Admin: Cleared ${deletedCount} scans + roster from cloud database, epoch=${clearEpoch}`);
 
     return {
       ok: true,
       deleted: deletedCount,
-      message: `Cleared ${deletedCount} scan(s) from cloud database`,
+      clear_epoch: clearEpoch,
+      message: `Cleared ${deletedCount} scan(s) + roster from cloud database`,
       timestamp: new Date().toISOString(),
     };
   } catch (e: any) {
+    try { await client.query("ROLLBACK"); } catch {}
     app.log.error({ err: e }, "Admin clear-scans failed");
     reply.code(500);
     return {
@@ -663,6 +694,131 @@ app.delete("/v1/admin/clear-scans", async (req, reply) => {
       error: "Failed to clear scans",
       message: e.message,
     };
+  } finally {
+    client.release();
+  }
+});
+
+// DELETE /v1/admin/clear-station — clear scans for a single station
+app.delete("/v1/admin/clear-station", async (req, reply) => {
+  const confirmHeader = req.headers["x-confirm-delete"];
+  if (confirmHeader !== "DELETE STATION SCANS") {
+    reply.code(400);
+    return { error: "Missing or invalid X-Confirm-Delete header" };
+  }
+
+  const station = (req.query as any)?.station;
+  if (!station || typeof station !== "string") {
+    reply.code(400);
+    return { error: "Missing 'station' query parameter" };
+  }
+
+  const client = await pool.connect();
+  try {
+    const countResult = await client.query(
+      "SELECT COUNT(*) as count FROM scans WHERE station_name = $1", [station]
+    );
+    const deletedCount = parseInt(countResult.rows[0].count);
+
+    await client.query("DELETE FROM scans WHERE station_name = $1", [station]);
+
+    app.log.info(`Admin: Cleared ${deletedCount} scans for station "${station}"`);
+
+    return {
+      ok: true,
+      deleted: deletedCount,
+      station,
+      message: `Cleared ${deletedCount} scan(s) for station "${station}"`,
+      timestamp: new Date().toISOString(),
+    };
+  } catch (e: any) {
+    app.log.error({ err: e }, "Admin clear-station failed");
+    reply.code(500);
+    return { ok: false, error: "Failed to clear station scans", message: e.message };
+  } finally {
+    client.release();
+  }
+});
+
+// ---- station heartbeat & status ----
+
+// POST /v1/stations/heartbeat — station reports its status (authenticated)
+app.post("/v1/stations/heartbeat", async (req, reply) => {
+  const body = req.body as any;
+  const station_name = body?.station_name;
+  if (!station_name || typeof station_name !== "string") {
+    reply.code(400);
+    return { error: "Missing station_name" };
+  }
+
+  const last_clear_epoch = body?.last_clear_epoch || null;
+  const local_scan_count = parseInt(body?.local_scan_count) || 0;
+
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      INSERT INTO station_heartbeat (station_name, last_clear_epoch, local_scan_count, last_seen_at)
+      VALUES ($1, $2, $3, NOW())
+      ON CONFLICT (station_name) DO UPDATE SET
+        last_clear_epoch = $2,
+        local_scan_count = $3,
+        last_seen_at = NOW()
+    `, [station_name, last_clear_epoch, local_scan_count]);
+    return { ok: true };
+  } catch (e: any) {
+    app.log.error({ err: e }, "Station heartbeat failed");
+    reply.code(500);
+    return { ok: false, error: e.message };
+  } finally {
+    client.release();
+  }
+});
+
+// GET /v1/stations/status — public: all station statuses (for admin panel + mobile dashboard)
+app.get("/v1/stations/status", {
+  config: { rateLimit: { max: PUBLIC_RATE_LIMIT_MAX, timeWindow: RATE_LIMIT_WINDOW } }
+}, async (req, reply) => {
+  const client = await pool.connect();
+  try {
+    const epochResult = await client.query("SELECT value FROM roster_meta WHERE key = 'clear_epoch'");
+    const clear_epoch = epochResult.rows[0]?.value || null;
+
+    const stationsResult = await client.query(`
+      SELECT station_name, last_clear_epoch, local_scan_count, last_seen_at
+      FROM station_heartbeat
+      ORDER BY station_name
+    `);
+
+    const now = new Date();
+    const stations = stationsResult.rows.map(row => {
+      const lastSeen = new Date(row.last_seen_at);
+      const secondsAgo = Math.floor((now.getTime() - lastSeen.getTime()) / 1000);
+      let status = "offline";
+      if (secondsAgo <= 120) {
+        status = (clear_epoch && row.last_clear_epoch === clear_epoch) ? "ready" : "pending";
+      }
+      return {
+        station_name: row.station_name,
+        status,
+        last_clear_epoch: row.last_clear_epoch,
+        local_scan_count: parseInt(row.local_scan_count),
+        seconds_ago: secondsAgo,
+      };
+    });
+
+    const readyCount = stations.filter(s => s.status === "ready").length;
+
+    return {
+      clear_epoch,
+      stations,
+      ready_count: readyCount,
+      total_count: stations.length,
+      timestamp: new Date().toISOString(),
+    };
+  } catch (e: any) {
+    app.log.error({ err: e }, "Station status query failed");
+    reply.code(500);
+    return { error: "Failed to fetch station status" };
   } finally {
     client.release();
   }

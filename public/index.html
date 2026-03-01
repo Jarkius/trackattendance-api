@@ -363,6 +363,48 @@ body::before {
 .delay-4 { animation-delay: 0.2s; }
 .delay-5 { animation-delay: 0.25s; }
 
+/* ---- STATION STATUS ---- */
+.status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin-bottom: 6px;
+}
+
+.status-row-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot.ready { background: var(--green); }
+.status-dot.pending { background: #f5a623; }
+.status-dot.offline { background: var(--text-mute); }
+
+.status-name {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.status-info {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--text-mute);
+  text-align: right;
+}
+
 /* ---- DESKTOP ---- */
 @media (min-width: 640px) {
   .hero-number { font-size: 6.5rem; }
@@ -431,6 +473,14 @@ body::before {
       <div class="empty-icon">&#9723;</div>
       No station data yet
     </div>
+  </div>
+
+  <div class="section fade-in delay-4" id="stationStatusSection" style="display:none">
+    <div class="section-header">
+      <span class="section-title">Station Status</span>
+      <span class="section-count" id="stationStatusCount">--</span>
+    </div>
+    <div id="stationStatusList"></div>
   </div>
 
 </div>
@@ -595,8 +645,50 @@ body::before {
     }
   });
 
+  // Station status
+  const STATUS_API = '../v1/stations/status';
+
+  function formatAgo(s) {
+    if (s < 60) return s + 's ago';
+    if (s < 3600) return Math.floor(s / 60) + 'm ago';
+    return Math.floor(s / 3600) + 'h ago';
+  }
+
+  async function fetchStationStatus() {
+    try {
+      const res = await fetch(STATUS_API);
+      if (!res.ok) return;
+      const data = await res.json();
+      const stations = data.stations || [];
+      const section = $('stationStatusSection');
+      if (!stations.length) { section.style.display = 'none'; return; }
+
+      section.style.display = 'block';
+      const ready = stations.filter(s => s.status === 'ready').length;
+      $('stationStatusCount').textContent = ready + '/' + stations.length + ' ready';
+
+      const list = $('stationStatusList');
+      list.innerHTML = '';
+      stations.forEach(s => {
+        const row = document.createElement('div');
+        row.className = 'status-row';
+        const label = s.status === 'ready' ? 'Ready' : s.status === 'pending' ? 'Pending' : 'Offline';
+        const info = s.status === 'offline' ? label : label + ' · ' + formatAgo(s.seconds_ago);
+        row.innerHTML = `
+          <div class="status-row-left">
+            <div class="status-dot ${s.status}"></div>
+            <div class="status-name">${s.station_name}</div>
+          </div>
+          <div class="status-info">${info}</div>`;
+        list.appendChild(row);
+      });
+    } catch (e) { /* silent */ }
+  }
+
   // Init
   fetchData().then(startTimer);
+  fetchStationStatus();
+  setInterval(fetchStationStatus, 30000);
 })();
 </script>
 </body>

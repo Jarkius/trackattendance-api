@@ -25,5 +25,19 @@ create table if not exists roster_summary (
   updated_at    timestamptz not null default now()
 );
 
+-- roster metadata (hash, clear_epoch, etc.)
+create table if not exists roster_meta (
+  key   text primary key,
+  value text not null
+);
+
+-- station heartbeat: tracks station liveness and clear status
+create table if not exists station_heartbeat (
+  station_name      text        primary key,
+  last_clear_epoch  text,
+  local_scan_count  integer     not null default 0,
+  last_seen_at      timestamptz not null default now()
+);
+
 -- migration for existing databases
 -- ALTER TABLE scans ADD COLUMN IF NOT EXISTS business_unit TEXT;
