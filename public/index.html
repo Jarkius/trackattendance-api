@@ -565,13 +565,11 @@ html.light .error-banner {
     }
   });
 
-  // Configurable refresh interval via URL param: ?refresh=120 (seconds, 10-600)
-  const urlParams = new URLSearchParams(window.location.search);
-  const customRefresh = parseInt(urlParams.get('refresh'));
-  const POLL_INTERVAL = (customRefresh >= 10 && customRefresh <= 600) ? customRefresh : 60;
-  const STATUS_INTERVAL = POLL_INTERVAL * 1000;  // station status follows same cadence
   const API_URL = '../v1/dashboard/public/stats';
+  const CONFIG_URL = '../v1/dashboard/public/config';
 
+  // Refresh interval: fetched from API, 0 = manual pull-to-refresh only
+  let POLL_INTERVAL = 60;  // default until config loads
   let countdown = POLL_INTERVAL;
   let timer = null;
   let lastData = null;
@@ -727,8 +725,12 @@ html.light .error-banner {
   let stationTimer = null;
 
   function startTimer() {
-    countdown = POLL_INTERVAL;
     clearInterval(timer);
+    if (POLL_INTERVAL === 0) {
+      $('countdown').textContent = 'manual';
+      return;
+    }
+    countdown = POLL_INTERVAL;
     timer = setInterval(() => {
       countdown--;
       $('countdown').textContent = countdown + 's';
@@ -741,7 +743,8 @@ html.light .error-banner {
 
   function startStationTimer() {
     clearInterval(stationTimer);
-    stationTimer = setInterval(fetchStationStatus, STATUS_INTERVAL);
+    if (POLL_INTERVAL === 0) return;
+    stationTimer = setInterval(fetchStationStatus, POLL_INTERVAL * 1000);
   }
 
   // Pause ALL polling when tab is hidden, resume + refresh on return
@@ -749,7 +752,7 @@ html.light .error-banner {
     if (document.hidden) {
       clearInterval(timer);
       clearInterval(stationTimer);
-      $('countdown').textContent = 'paused';
+      if (POLL_INTERVAL > 0) $('countdown').textContent = 'paused';
     } else {
       fetchData();
       fetchStationStatus();
@@ -814,8 +817,10 @@ html.light .error-banner {
       ptrEl.classList.add('refreshing');
       ptrEl.querySelector('svg').style.transform = '';
       Promise.all([fetchData(), fetchStationStatus()]).then(function() {
-        countdown = POLL_INTERVAL;
-        $('countdown').textContent = countdown + 's';
+        if (POLL_INTERVAL > 0) {
+          countdown = POLL_INTERVAL;
+          $('countdown').textContent = countdown + 's';
+        }
       }).finally(function() {
         ptrRefreshing = false;
         ptrEl.classList.remove('refreshing', 'visible');
@@ -828,10 +833,22 @@ html.light .error-banner {
     }
   }, { passive: true });
 
-  // Init
-  fetchData().then(startTimer);
-  fetchStationStatus();
-  startStationTimer();
+  // Init: fetch config then start polling
+  async function init() {
+    try {
+      const res = await fetch(CONFIG_URL);
+      if (res.ok) {
+        const cfg = await res.json();
+        const val = parseInt(cfg.refresh_interval);
+        if (val === 0 || (val >= 10 && val <= 600)) POLL_INTERVAL = val;
+      }
+    } catch (e) { /* use default */ }
+    await fetchData();
+    fetchStationStatus();
+    startTimer();
+    startStationTimer();
+  }
+  init();
 })();
 </script>
 </body>

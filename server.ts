@@ -588,6 +588,49 @@ app.get("/v1/dashboard/public/stats", {
   }
 });
 
+// GET /v1/dashboard/public/config - Unauthenticated dashboard config
+app.get("/v1/dashboard/public/config", {
+  config: {
+    rateLimit: {
+      max: PUBLIC_RATE_LIMIT_MAX,
+      timeWindow: RATE_LIMIT_WINDOW,
+    }
+  }
+}, async (req, reply) => {
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      "SELECT value FROM roster_meta WHERE key = 'dashboard_refresh_interval'"
+    );
+    const interval = result.rows.length > 0 ? parseInt(result.rows[0].value) : 60;
+    return { refresh_interval: interval };
+  } finally {
+    client.release();
+  }
+});
+
+// PUT /v1/dashboard/config - Authenticated: set dashboard config
+app.put("/v1/dashboard/config", async (req, reply) => {
+  const body = req.body as any;
+  const interval = parseInt(body?.refresh_interval);
+  if (isNaN(interval) || (interval !== 0 && (interval < 10 || interval > 600))) {
+    reply.code(400);
+    return { error: "refresh_interval must be 0 (manual only) or 10-600 seconds" };
+  }
+  const client = await pool.connect();
+  try {
+    await client.query(
+      `INSERT INTO roster_meta (key, value) VALUES ('dashboard_refresh_interval', $1)
+       ON CONFLICT (key) DO UPDATE SET value = $1`,
+      [String(interval)]
+    );
+    app.log.info({ refresh_interval: interval }, "Dashboard config updated");
+    return { refresh_interval: interval };
+  } finally {
+    client.release();
+  }
+});
+
 // GET /v1/dashboard/export - Authenticated export for Excel
 interface ExportQuery {
   Querystring: {
