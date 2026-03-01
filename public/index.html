@@ -625,8 +625,10 @@ html.light .error-banner {
       const displayName = (item.name === 'Unknown' ? '(Unmatched)' : item.name) || '(Unmatched)';
       const st = statusMap && statusMap[item.name];
       if (st) {
+        var statusText = st.status === 'pending' ? 'Clearing...' :
+          st.status === 'offline' ? 'Offline' : formatAgo(st.seconds_ago);
         nameEl.innerHTML = '<span class="status-dot ' + st.status + '"></span>' +
-          displayName + '<span class="stat-status">' + formatAgo(st.seconds_ago) + '</span>';
+          displayName + '<span class="stat-status">' + statusText + '</span>';
       } else {
         nameEl.textContent = displayName;
       }
