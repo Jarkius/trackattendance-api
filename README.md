@@ -11,12 +11,20 @@ Designed for seamless integration with offline QR scanning stations, capturing b
 - **Simplified schema** aligned with local QR app database (badge_id, station_name, scanned_at)
 - **UTC timestamp support** - direct compatibility with ISO8601 format
 - **Privacy-preserving** - stores only scan events, not employee PII
+- **Business unit tracking** per scan event
+- **Public mobile attendance dashboard** - no auth required, auto-refreshes every 30s
+- **Roster summary sync** endpoint with hash-based deduplication
+- **Dashboard stats endpoints** - authenticated (with station and BU breakdown) and public (rate-limited)
+- **Admin clear-scans endpoint** - PIN-protected via `X-Confirm-Delete` header
+- **Meta field sanitization** - max 20 properties enforced, per-value size limits applied
+- **DB pool eager connection test** at startup to detect misconfiguration early
 - JSON schema validation and Fastify logging for observability
 - Graceful shutdown with pooled PostgreSQL connections
-- **🌐 Production Deployed** - Running on Google Cloud Run with automatic scaling
-- **📊 Monitoring Ready** - Health checks, logging, and error handling included
-- **🔒 Security Hardened** - API authentication and validation implemented
-- **☁️ Cloud Sync Ready** - Designed for offline-first QR scanning stations
+- **Production Deployed** - Running on Google Cloud Run with automatic scaling
+- **Monitoring Ready** - Health checks, logging, and error handling included
+- **Security Hardened** - API authentication and validation implemented
+- **Cloud Sync Ready** - Designed for offline-first QR scanning stations
+- **CI/CD** - GitHub Actions with TypeScript type check gate before deploy
 
 ## Requirements
 - Node.js 20+ (align with engines used by the team).
@@ -57,6 +65,13 @@ psql "$DATABASE_URL" -f Postgres-schema.sql
 - `GET /` - readiness probe; unauthenticated (health check)
 - `GET /healthz` - legacy health endpoint (use `/` instead)
 - `POST /v1/scans/batch` - accepts `{ "events": [...] }` payloads with ISO8601 timestamps; returns counts of saved and duplicate scans
+- `GET /v1/dashboard/stats` - authenticated dashboard stats (stations, BU breakdown)
+- `GET /v1/dashboard/public/stats` - public dashboard stats (no auth, rate-limited)
+- `GET /v1/dashboard/export` - authenticated scan export
+- `POST /v1/roster/summary` - sync roster BU counts (with hash-based deduplication)
+- `GET /v1/roster/hash` - check current roster hash
+- `DELETE /v1/admin/clear-scans` - clear all scans (requires `X-Confirm-Delete` header)
+- `GET /dashboard/` - public mobile dashboard HTML page
 
 ### Request Format
 
@@ -68,6 +83,7 @@ psql "$DATABASE_URL" -f Postgres-schema.sql
       "badge_id": "101117",
       "station_name": "Main Gate",
       "scanned_at": "2025-10-15T12:30:45Z",
+      "business_unit": "Operations",
       "meta": {
         "matched": true,
         "location": "Main Entrance"
@@ -85,7 +101,8 @@ psql "$DATABASE_URL" -f Postgres-schema.sql
 | `badge_id` | string | ✓ | Employee badge identifier scanned from QR/barcode |
 | `station_name` | string | ✓ | Scanning station location name |
 | `scanned_at` | string | ✓ | ISO8601 UTC timestamp (format: `YYYY-MM-DDTHH:MM:SSZ`) |
-| `meta` | object | - | Additional context (does NOT contain employee names/PII) |
+| `business_unit` | string | - | Business unit of the employee being scanned (optional) |
+| `meta` | object | - | Additional context (does NOT contain employee names/PII; max 20 properties) |
 
 ### Response Format
 
@@ -98,10 +115,11 @@ psql "$DATABASE_URL" -f Postgres-schema.sql
 ```
 
 ## Project Layout
-- `server.ts` � Fastify entry point and route wiring.
-- `dist/` � generated JavaScript output; do not edit manually.
-- `Postgres-schema.sql` � authoritative schema for the `scans` table.
-- `AGENTS.md` � contributor guidelines and workflow expectations.
+- `server.ts` — Fastify entry point and route wiring.
+- `dist/` — generated JavaScript output; do not edit manually.
+- `public/index.html` — Mobile attendance dashboard (single-file, vanilla JS).
+- `Postgres-schema.sql` — authoritative schema; includes `scans`, `roster_summary`, and `roster_meta` tables.
+- `AGENTS.md` — contributor guidelines and workflow expectations.
 
 ## Testing
 
@@ -120,6 +138,8 @@ npx tsx testscript/test-timestamp-conversion.js
 ```
 
 All test scripts are located in `testscript/` directory (git-ignored).
+
+In CI, `tsc --noEmit` runs as a type check gate before any deployment step proceeds.
 
 ### Manual Testing
 
@@ -153,25 +173,27 @@ curl -X POST http://localhost:5000/v1/scans/batch \
 
 ### Deployment Configuration
 - **Docker**: Multi-stage build optimized for production
-- **CI/CD**: Google Cloud Build automated deployment
+- **CI/CD**: GitHub Actions with TypeScript type check gate before deploy
 - **Monitoring**: Health checks and logging configured
 - **Security**: Non-root user, TLS/SSL enabled
 
-## 📱 QR App Integration
+## Frontend Integration
 
-This API is designed to work seamlessly with the **QR Standalone App** (`C:\Workspace\Dev\Python\QR`):
-- Offline-first Python/PyQt6 desktop application
-- SQLite local storage with UTC timestamps
-- 1:1 field mapping for zero-conversion sync
-- Privacy-preserving design (employee names stay local)
+This API is designed to work with scanning stations and supporting frontends:
 
-### ✅ Integration Status - COMPLETE
-- ✅ Schema aligned (badge_id, station_name, scanned_at)
-- ✅ Timestamp format standardized (UTC with Z suffix)
-- ✅ Privacy design complete (no PII in cloud)
-- ✅ **Sync module fully implemented and tested**
-- ✅ **End-to-end workflow verified (119 scans synced)**
-- ✅ **Production deployment operational**
+- **QR Standalone App** — Offline-first Python/PyQt6 desktop scanner; SQLite local storage with UTC timestamps; 1:1 field mapping for zero-conversion sync; privacy-preserving (employee names stay local)
+- **Mobile Dashboard** — Public HTML page (`GET /dashboard/`) for real-time attendance display; auto-refreshes every 30s; no authentication required
+- **Roster Sync** — BU counts and email field pushed via `POST /v1/roster/summary`; hash-based deduplication prevents redundant writes
+
+### Integration Status
+- Schema aligned (badge_id, station_name, scanned_at, business_unit)
+- Timestamp format standardized (UTC with Z suffix)
+- Privacy design complete (no PII in cloud)
+- Sync module fully implemented and tested
+- End-to-end workflow verified
+- Production deployment operational
+- Mobile dashboard live with public stats endpoint
+- Roster sync with hash deduplication operational
 
 ### 📋 Manual Testing
 Comprehensive manual testing guide available: [`MANUAL_TESTING_GUIDE.md`](MANUAL_TESTING_GUIDE.md)
