@@ -115,7 +115,10 @@ try {
     )
   `);
   await client.query(`
-    ALTER TABLE scans ADD COLUMN IF NOT EXISTS scan_source TEXT NOT NULL DEFAULT 'badge'
+    ALTER TABLE scans ADD COLUMN IF NOT EXISTS scan_source TEXT NOT NULL DEFAULT 'manual'
+  `);
+  await client.query(`
+    ALTER TABLE scans ALTER COLUMN scan_source SET DEFAULT 'manual'
   `);
   await client.query(`
     CREATE TABLE IF NOT EXISTS station_heartbeat (
@@ -391,7 +394,7 @@ app.post<BatchRequest>("/v1/scans/batch", { schema: batchSchema }, async (req, r
       scannedAts.push(date);
       metas.push(ev.meta ?? null);
       businessUnits.push(ev.business_unit ?? null);
-      scanSources.push(ev.scan_source ?? "badge");
+      scanSources.push(ev.scan_source ?? "manual");
     }
 
     const insertSql = `
@@ -601,20 +604,22 @@ app.get<ExportQuery>("/v1/dashboard/export", async (req, reply) => {
         station_name,
         scanned_at,
         meta->>'matched' as matched,
+        meta->>'legacy_id' as legacy_id,
         business_unit,
         scan_source
       FROM scans
-      ORDER BY scanned_at DESC
+      ORDER BY scanned_at ASC
       LIMIT $1
     `, [limit]);
 
     const scans = result.rows.map(row => ({
       badge_id: row.badge_id,
+      legacy_id: row.legacy_id || null,
       station_name: row.station_name,
       scanned_at: row.scanned_at ? new Date(row.scanned_at).toISOString() : null,
       matched: row.matched === 'true',
       business_unit: row.business_unit || null,
-      scan_source: row.scan_source || 'badge',
+      scan_source: row.scan_source || 'manual',
     }));
 
     return {
@@ -797,7 +802,7 @@ app.get("/v1/stations/status", {
       const secondsAgo = Math.floor((now.getTime() - lastSeen.getTime()) / 1000);
       let status = "offline";
       if (secondsAgo <= 120) {
-        status = (clear_epoch && row.last_clear_epoch === clear_epoch) ? "ready" : "pending";
+        status = (!clear_epoch || row.last_clear_epoch === clear_epoch) ? "ready" : "pending";
       }
       return {
         station_name: row.station_name,

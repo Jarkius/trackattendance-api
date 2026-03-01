@@ -8,7 +8,7 @@ create table if not exists scans (
   scanned_at        timestamptz not null,            -- UTC timestamp
   meta              jsonb,                           -- additional context (NO PII)
   business_unit     text,                            -- organizational unit (e.g. "Engineering")
-  scan_source       text        not null default 'badge',  -- 'badge' or 'manual_lookup'
+  scan_source       text        not null default 'manual',  -- 'badge' or 'manual'
   created_at        timestamptz not null default now()
 );
 
