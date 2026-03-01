@@ -674,6 +674,8 @@ app.delete("/v1/admin/clear-scans", async (req, reply) => {
     `, [clearEpoch]);
     // Reset roster hash so next import will re-upload
     await client.query("DELETE FROM roster_meta WHERE key = 'hash'");
+    // Clear stale heartbeats — active stations will re-register on next health check
+    await client.query("TRUNCATE TABLE station_heartbeat");
     await client.query("COMMIT");
 
     app.log.info(`Admin: Cleared ${deletedCount} scans + roster from cloud database, epoch=${clearEpoch}`);
