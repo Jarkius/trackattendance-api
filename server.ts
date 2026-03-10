@@ -84,9 +84,12 @@ async function bootstrap() {
 // ---- Issue #7: Eager DB connection test ----
 try {
   const client = await pool.connect();
-  await client.query('SELECT 1');
-  client.release();
-  app.log.info("Database connection verified");
+  try {
+    await client.query('SELECT 1');
+    app.log.info("Database connection verified");
+  } finally {
+    client.release();
+  }
 } catch (err) {
   app.log.error({ err }, "Failed to connect to database at startup");
   process.exit(1);
@@ -95,41 +98,44 @@ try {
 // ---- run migration ----
 try {
   const client = await pool.connect();
-  await client.query(`
-    ALTER TABLE scans ADD COLUMN IF NOT EXISTS business_unit TEXT
-  `);
-  await client.query(`
-    CREATE INDEX IF NOT EXISTS idx_scans_business_unit ON scans (business_unit)
-  `);
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS roster_summary (
-      business_unit TEXT PRIMARY KEY,
-      registered INTEGER NOT NULL,
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    )
-  `);
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS roster_meta (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL
-    )
-  `);
-  await client.query(`
-    ALTER TABLE scans ADD COLUMN IF NOT EXISTS scan_source TEXT NOT NULL DEFAULT 'manual'
-  `);
-  await client.query(`
-    ALTER TABLE scans ALTER COLUMN scan_source SET DEFAULT 'manual'
-  `);
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS station_heartbeat (
-      station_name      TEXT PRIMARY KEY,
-      last_clear_epoch  TEXT,
-      local_scan_count  INTEGER NOT NULL DEFAULT 0,
-      last_seen_at      TIMESTAMPTZ NOT NULL DEFAULT now()
-    )
-  `);
-  client.release();
-  app.log.info("Database migration check complete");
+  try {
+    await client.query(`
+      ALTER TABLE scans ADD COLUMN IF NOT EXISTS business_unit TEXT
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_scans_business_unit ON scans (business_unit)
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS roster_summary (
+        business_unit TEXT PRIMARY KEY,
+        registered INTEGER NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS roster_meta (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )
+    `);
+    await client.query(`
+      ALTER TABLE scans ADD COLUMN IF NOT EXISTS scan_source TEXT NOT NULL DEFAULT 'manual'
+    `);
+    await client.query(`
+      ALTER TABLE scans ALTER COLUMN scan_source SET DEFAULT 'manual'
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS station_heartbeat (
+        station_name      TEXT PRIMARY KEY,
+        last_clear_epoch  TEXT,
+        local_scan_count  INTEGER NOT NULL DEFAULT 0,
+        last_seen_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `);
+    app.log.info("Database migration check complete");
+  } finally {
+    client.release();
+  }
 } catch (err) {
   app.log.warn({ err }, "Migration check failed (non-fatal)");
 }
@@ -155,15 +161,27 @@ await app.register(fastifyStatic, {
   decorateReply: false,
 });
 
-// ---- health ----
+// ---- health (with in-memory cache to avoid DB hit on every probe) ----
+let healthCache: { ok: boolean; db: string; ts: number } | null = null;
+const HEALTH_CACHE_MS = 5000;
+
 app.get("/healthz", { config: { rateLimit: false } }, async () => {
+  const now = Date.now();
+  if (healthCache && (now - healthCache.ts) < HEALTH_CACHE_MS) {
+    return { ok: healthCache.ok, db: healthCache.db };
+  }
   // Issue #7: Health check verifies DB connectivity
   try {
     const client = await pool.connect();
-    await client.query('SELECT 1');
-    client.release();
+    try {
+      await client.query('SELECT 1');
+    } finally {
+      client.release();
+    }
+    healthCache = { ok: true, db: "connected", ts: now };
     return { ok: true, db: "connected" };
   } catch {
+    healthCache = { ok: false, db: "disconnected", ts: now };
     return { ok: false, db: "disconnected" };
   }
 });
@@ -172,9 +190,12 @@ app.get("/", { config: { rateLimit: false } }, async () => {
   let clear_epoch: string | null = null;
   try {
     const client = await pool.connect();
-    const result = await client.query("SELECT value FROM roster_meta WHERE key = 'clear_epoch'");
-    clear_epoch = result.rows[0]?.value || null;
-    client.release();
+    try {
+      const result = await client.query("SELECT value FROM roster_meta WHERE key = 'clear_epoch'");
+      clear_epoch = result.rows[0]?.value || null;
+    } finally {
+      client.release();
+    }
   } catch { /* non-fatal */ }
   return {
     status: "ok",
@@ -194,7 +215,7 @@ app.addHook("onRequest", async (req, reply) => {
   if (req.url.startsWith("/dashboard/")) return;
 
   const auth = req.headers.authorization || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  const token = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7) : "";
   if (!token || !API_KEY) {
     reply.code(401);
     throw new Error("Unauthorized");
@@ -787,9 +808,9 @@ app.delete("/v1/admin/clear-station", async (req, reply) => {
   }
 
   const station = (req.query as any)?.station;
-  if (!station || typeof station !== "string") {
+  if (!station || typeof station !== "string" || station.length > 128) {
     reply.code(400);
-    return { error: "Missing 'station' query parameter" };
+    return { error: "Missing or invalid 'station' query parameter (must be a non-empty string, max 128 characters)" };
   }
 
   const client = await pool.connect();
@@ -857,11 +878,11 @@ app.post("/v1/stations/heartbeat", async (req, reply) => {
 // PUT /v1/stations/rename — rename a station across all scans and heartbeat
 app.put("/v1/stations/rename", async (req, reply) => {
   const body = req.body as any;
-  const old_name = body?.old_name?.trim();
-  const new_name = body?.new_name?.trim();
-  if (!old_name || !new_name) {
+  const old_name = typeof body?.old_name === "string" ? body.old_name.trim() : "";
+  const new_name = typeof body?.new_name === "string" ? body.new_name.trim() : "";
+  if (!old_name || !new_name || old_name.length > 128 || new_name.length > 128) {
     reply.code(400);
-    return { error: "Missing old_name or new_name" };
+    return { error: "old_name and new_name must be non-empty strings, max 128 characters" };
   }
 
   const client = await pool.connect();
@@ -891,7 +912,7 @@ app.put("/v1/stations/rename", async (req, reply) => {
     app.log.info(`Station renamed: '${old_name}' → '${new_name}' (${scansResult.rowCount} scans updated)`);
     return { ok: true, scans_updated: scansResult.rowCount };
   } catch (e: any) {
-    await client.query("ROLLBACK");
+    try { await client.query("ROLLBACK"); } catch {}
     app.log.error({ err: e }, "Station rename failed");
     reply.code(500);
     return { ok: false, error: e.message };
@@ -969,7 +990,10 @@ process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
 
 // ---- start server ----
-const port = Number(process.env.PORT || 5000);
+const port = parseInt(process.env.PORT || "5000", 10);
+if (isNaN(port) || port < 1 || port > 65535) {
+  throw new Error("Invalid PORT: must be a number between 1 and 65535");
+}
 await app.listen({ host: "0.0.0.0", port });
 app.log.info(`API listening on :${port}`);
 
