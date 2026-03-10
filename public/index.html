@@ -380,72 +380,97 @@ body::before {
   white-space: nowrap;
 }
 
-/* ---- TIMELINE BAR CHART ---- */
-.timeline-chart {
-  display: flex;
-  align-items: flex-end;
-  gap: 3px;
-  height: 100px;
-  padding: 0 2px;
+/* ---- LIVE STATS PANEL ---- */
+.live-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
 }
 
-.timeline-bar-wrap {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  height: 100%;
-  gap: 4px;
+.live-stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  text-align: center;
 }
 
-.timeline-bar-area {
-  flex: 1;
-  width: 100%;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
+.live-stat-card.wide {
+  grid-column: 1 / -1;
 }
 
-.timeline-bar {
-  width: 100%;
-  max-width: 28px;
-  border-radius: 3px 3px 1px 1px;
-  background: linear-gradient(180deg, var(--green), #86BC2580);
-  transition: height 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-  min-height: 2px;
-  position: relative;
+.live-stat-value {
+  font-family: 'DM Mono', monospace;
+  font-size: 1.6rem;
+  font-weight: 500;
+  color: var(--green);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
-.timeline-bar:hover::after {
-  content: attr(data-count);
-  position: absolute;
-  bottom: calc(100% + 4px);
-  left: 50%;
-  transform: translateX(-50%);
+.live-stat-value.dim { color: var(--text-mute); }
+
+.live-stat-label {
+  font-size: 0.65rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+  margin-top: 6px;
+}
+
+.live-stat-sub {
   font-family: 'DM Mono', monospace;
   font-size: 0.6rem;
-  color: var(--text);
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+/* Station balance bars */
+.station-balance {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.sbal-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sbal-name {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  min-width: 70px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+
+.sbal-track {
+  flex: 1;
+  height: 8px;
   background: var(--surface-up);
-  border: 1px solid var(--border);
-  padding: 2px 5px;
   border-radius: 4px;
-  white-space: nowrap;
-  z-index: 10;
+  overflow: hidden;
 }
 
-.timeline-time {
+.sbal-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  min-width: 2px;
+}
+
+.sbal-count {
   font-family: 'DM Mono', monospace;
-  font-size: 0.5rem;
-  color: var(--text-mute);
-  white-space: nowrap;
-  line-height: 1;
-}
-
-.timeline-empty {
-  text-align: center;
-  padding: 24px;
-  color: var(--text-mute);
-  font-size: 0.8rem;
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  min-width: 28px;
+  text-align: right;
 }
 
 /* ---- EMPTY STATE ---- */
@@ -695,23 +720,29 @@ html.light .error-banner {
 
   <div class="section fade-in delay-2">
     <div class="section-header">
-      <span class="section-title">Stations</span>
-      <span class="section-count" id="stationCount">0</span>
+      <span class="section-title">Live Stats</span>
+      <span class="section-count" id="liveLabel">realtime</span>
     </div>
-    <div id="stationList"></div>
-    <div class="empty" id="stationEmpty" style="display:none">
-      <div class="empty-icon">&#9723;</div>
-      No station data yet
+    <div class="live-stats">
+      <div class="live-stat-card">
+        <div class="live-stat-value" id="scanRate">--</div>
+        <div class="live-stat-label">Scans / min</div>
+        <div class="live-stat-sub" id="scanRateSub"></div>
+      </div>
+      <div class="live-stat-card">
+        <div class="live-stat-value" id="etaValue">--</div>
+        <div class="live-stat-label">Est. Completion</div>
+        <div class="live-stat-sub" id="etaSub"></div>
+      </div>
+      <div class="live-stat-card wide">
+        <div class="live-stat-label" style="margin-top:0;margin-bottom:10px">Station Load</div>
+        <div class="station-balance" id="stationBalance"></div>
+        <div class="empty" id="stationEmpty" style="display:none;padding:12px">
+          <div class="empty-icon">&#9723;</div>
+          No station data yet
+        </div>
+      </div>
     </div>
-  </div>
-
-  <div class="section fade-in delay-3">
-    <div class="section-header">
-      <span class="section-title">Scan Activity</span>
-      <span class="section-count" id="timelineLabel">10-min intervals</span>
-    </div>
-    <div id="timelineChart" class="timeline-chart"></div>
-    <div class="timeline-empty" id="timelineEmpty" style="display:none">No scan activity yet</div>
   </div>
 
 
@@ -882,33 +913,51 @@ html.light .error-banner {
     });
   }
 
-  function renderTimeline(container, timeline) {
+  // Station balance colors (based on load %)
+  const SBAL_COLORS = ['#86BC25', '#86BC25', '#f5a623', '#e8443a']; // low, normal, busy, overloaded
+
+  function getSbalColor(pct) {
+    if (pct >= 40) return SBAL_COLORS[3];
+    if (pct >= 30) return SBAL_COLORS[2];
+    return SBAL_COLORS[0];
+  }
+
+  function renderStationBalance(container, stations, totalScans) {
     container.innerHTML = '';
-    if (!timeline || timeline.length === 0) {
-      container.style.display = 'none';
-      $('timelineEmpty').style.display = 'block';
-      return;
-    }
-    container.style.display = '';
-    $('timelineEmpty').style.display = 'none';
-
-    const maxScans = timeline.reduce((m, t) => Math.max(m, t.scans), 0);
-    timeline.forEach((bucket, i) => {
-      const pct = maxScans > 0 ? (bucket.scans / maxScans * 100) : 0;
-      const t = new Date(bucket.time);
-      const label = t.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-
-      const wrap = document.createElement('div');
-      wrap.className = 'timeline-bar-wrap';
-      // Show time label every other bar, or first/last
-      const showLabel = i === 0 || i === timeline.length - 1 || i % 2 === 0;
-      wrap.innerHTML = `
-        <div class="timeline-bar-area">
-          <div class="timeline-bar" style="height:${Math.max(pct, 2)}%" data-count="${bucket.scans} scans"></div>
+    if (!stations.length) return;
+    const maxUnique = stations.reduce((m, s) => Math.max(m, s.unique), 0);
+    stations.forEach(st => {
+      const pct = maxUnique > 0 ? (st.unique / maxUnique * 100) : 0;
+      const sharePct = totalScans > 0 ? Math.round(st.unique / totalScans * 100) : 0;
+      const row = document.createElement('div');
+      row.className = 'sbal-row';
+      const name = escapeHtml(st.name || '(unnamed)');
+      row.innerHTML = `
+        <span class="sbal-name" title="${name}">${name}</span>
+        <div class="sbal-track">
+          <div class="sbal-fill" style="width:${Math.max(pct, 2)}%;background:${getSbalColor(sharePct)}"></div>
         </div>
-        <span class="timeline-time">${showLabel ? label : ''}</span>`;
-      container.appendChild(wrap);
+        <span class="sbal-count">${st.unique}</span>`;
+      container.appendChild(row);
     });
+  }
+
+  function computeScanRate(timeline) {
+    if (!timeline || timeline.length === 0) return { rate: 0, label: '' };
+    // Use last 2 buckets (20 min) for recent rate
+    const recent = timeline.slice(-2);
+    const totalScans = recent.reduce((s, b) => s + b.scans, 0);
+    const minutes = recent.length * 10;
+    const rate = minutes > 0 ? totalScans / minutes : 0;
+    return { rate, label: recent.length + ' intervals' };
+  }
+
+  function computeETA(remaining, ratePerMin) {
+    if (remaining <= 0) return { value: 'Done', sub: 'All registered' };
+    if (ratePerMin <= 0) return { value: '--', sub: 'No recent scans' };
+    const mins = Math.ceil(remaining / ratePerMin);
+    if (mins > 120) return { value: Math.round(mins / 60) + 'h', sub: remaining + ' remaining' };
+    return { value: mins + 'min', sub: remaining + ' remaining' };
   }
 
   function update(data) {
@@ -920,7 +969,6 @@ html.light .error-banner {
     const totalReg = data.total_registered || 0;
     const uniqueBadges = data.unique_badges || 0;
     const rate = totalReg > 0 ? (uniqueBadges / totalReg * 100) : 0;
-
     const totalScans = data.total_scans || 0;
 
     $('heroRate').textContent = totalReg > 0 ? rate.toFixed(1) + '%' : '--';
@@ -928,23 +976,28 @@ html.light .error-banner {
     $('heroTotalScans').textContent = totalScans.toLocaleString();
     $('heroRegistered').textContent = totalReg.toLocaleString();
 
-    // Timeline chart
-    renderTimeline($('timelineChart'), data.timeline || []);
+    // Live stats: scan rate
+    const sr = computeScanRate(data.timeline || []);
+    $('scanRate').textContent = sr.rate > 0 ? sr.rate.toFixed(1) : '--';
+    $('scanRate').classList.toggle('dim', sr.rate === 0);
+    $('scanRateSub').textContent = totalScans > 0 ? totalScans + ' total' : '';
 
-    // Stations (merged with status)
+    // Live stats: ETA
+    const remaining = Math.max(totalReg - uniqueBadges, 0);
+    const eta = computeETA(remaining, sr.rate);
+    $('etaValue').textContent = eta.value;
+    $('etaValue').classList.toggle('dim', sr.rate === 0 && remaining > 0);
+    $('etaSub').textContent = eta.sub;
+
+    // Station balance
     const stations = data.stations || [];
-    const maxStation = stations.reduce((m, s) => Math.max(m, s.unique), 0);
-    $('stationCount').textContent = stations.length + (stations.length === 1 ? ' station' : ' stations');
     $('stationEmpty').style.display = stations.length ? 'none' : 'block';
-    renderRows($('stationList'), stations, maxStation, false, stationStatusMap);
+    renderStationBalance($('stationBalance'), stations, uniqueBadges);
 
-    // Business units
+    // Business units — ring charts
     const bus = data.business_units || [];
-    const maxBU = bus.reduce((m, b) => Math.max(m, b.unique), 0);
     $('buCount').textContent = bus.length + (bus.length === 1 ? ' unit' : ' units');
     $('buEmpty').style.display = bus.length ? 'none' : 'block';
-
-    // Ring charts (visual BU breakdown)
     renderRings($('buRings'), bus);
 
     // Footer
@@ -1026,11 +1079,11 @@ html.light .error-banner {
       const stations = data.stations || [];
       stationStatusMap = {};
       stations.forEach(s => { stationStatusMap[s.station_name] = s; });
-      // Re-render station rows with updated status
+      // Re-render station balance with updated status
       if (lastData) {
         const stList = lastData.stations || [];
-        const maxStation = stList.reduce((m, s) => Math.max(m, s.unique), 0);
-        renderRows($('stationList'), stList, maxStation, false, stationStatusMap);
+        const uniqueBadges = lastData.unique_badges || 0;
+        renderStationBalance($('stationBalance'), stList, uniqueBadges);
       }
     } catch (e) { /* silent */ }
   }
