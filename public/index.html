@@ -298,6 +298,156 @@ body::before {
   min-width: 2px;
 }
 
+/* ---- DONUT RING CHARTS ---- */
+.ring-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 12px;
+}
+
+.ring-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 10px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  transition: transform 0.2s ease;
+}
+
+.ring-card:active { transform: scale(0.97); }
+
+.ring-wrap {
+  position: relative;
+  width: 80px;
+  height: 80px;
+}
+
+.ring-wrap svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.ring-track {
+  fill: none;
+  stroke: var(--surface-up);
+  stroke-width: 7;
+}
+
+.ring-fill {
+  fill: none;
+  stroke-width: 7;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ring-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.ring-pct {
+  font-family: 'DM Mono', monospace;
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1;
+}
+
+.ring-count {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.6rem;
+  color: var(--text-mute);
+  margin-top: 2px;
+}
+
+.ring-label {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  text-align: center;
+  line-height: 1.2;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- TIMELINE BAR CHART ---- */
+.timeline-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 100px;
+  padding: 0 2px;
+}
+
+.timeline-bar-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  gap: 4px;
+}
+
+.timeline-bar-area {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.timeline-bar {
+  width: 100%;
+  max-width: 28px;
+  border-radius: 3px 3px 1px 1px;
+  background: linear-gradient(180deg, var(--green), #86BC2580);
+  transition: height 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  min-height: 2px;
+  position: relative;
+}
+
+.timeline-bar:hover::after {
+  content: attr(data-count);
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'DM Mono', monospace;
+  font-size: 0.6rem;
+  color: var(--text);
+  background: var(--surface-up);
+  border: 1px solid var(--border);
+  padding: 2px 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+  z-index: 10;
+}
+
+.timeline-time {
+  font-family: 'DM Mono', monospace;
+  font-size: 0.5rem;
+  color: var(--text-mute);
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.timeline-empty {
+  text-align: center;
+  padding: 24px;
+  color: var(--text-mute);
+  font-size: 0.8rem;
+}
+
 /* ---- EMPTY STATE ---- */
 .empty {
   text-align: center;
@@ -397,6 +547,7 @@ body::before {
   .hero-number { font-size: 8rem; }
   .hero-stat-value { font-size: 1.6rem; }
   .hero { max-width: 900px; margin: 0 auto; padding: 40px 20px 32px; }
+  .section { max-width: 900px; margin-left: auto; margin-right: auto; }
   .sections-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -408,6 +559,8 @@ body::before {
   .stat-name { font-size: 0.95rem; }
   .topbar { padding: 16px 24px; }
   .topbar-title { font-size: 0.85rem; }
+  .ring-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  .timeline-chart { height: 130px; }
 }
 
 /* ---- LIGHT THEME ---- */
@@ -528,20 +681,37 @@ html.light .error-banner {
     <div class="hero-footer" id="footer">Last updated: --</div>
   </div>
 
+  <div class="section fade-in delay-1">
+    <div class="section-header">
+      <span class="section-title">Scan Activity</span>
+      <span class="section-count" id="timelineLabel">10-min intervals</span>
+    </div>
+    <div id="timelineChart" class="timeline-chart"></div>
+    <div class="timeline-empty" id="timelineEmpty" style="display:none">No scan activity yet</div>
+  </div>
+
+  <div class="section fade-in delay-2">
+    <div class="section-header">
+      <span class="section-title">Business Units</span>
+      <span class="section-count" id="buCount">0</span>
+    </div>
+    <div id="buRings" class="ring-grid"></div>
+    <div class="empty" id="buEmpty" style="display:none">
+      <div class="empty-icon">&#9632;</div>
+      No business unit data yet
+    </div>
+  </div>
+
   <div class="sections-grid">
-    <div class="section fade-in delay-2">
+    <div class="section fade-in delay-3">
       <div class="section-header">
         <span class="section-title">Business Units</span>
-        <span class="section-count" id="buCount">0</span>
+        <span class="section-count" id="buCount2">0</span>
       </div>
       <div id="buList"></div>
-      <div class="empty" id="buEmpty" style="display:none">
-        <div class="empty-icon">&#9632;</div>
-        No business unit data yet
-      </div>
     </div>
 
-    <div class="section fade-in delay-3">
+    <div class="section fade-in delay-4">
       <div class="section-header">
         <span class="section-title">Stations</span>
         <span class="section-count" id="stationCount">0</span>
@@ -679,6 +849,72 @@ html.light .error-banner {
     }
   }
 
+  // Ring chart color palette
+  const RING_COLORS = [
+    '#86BC25', '#4CAF50', '#00BCD4', '#2196F3', '#9C27B0',
+    '#FF9800', '#E91E63', '#607D8B', '#795548', '#CDDC39',
+  ];
+
+  function renderRings(container, items) {
+    container.innerHTML = '';
+    const CIRC = 2 * Math.PI * 33; // radius=33
+    items.forEach((item, i) => {
+      if (item.name === 'Unknown' || item.name === 'Unmatched') return;
+      const hasReg = item.registered > 0;
+      const pct = hasReg ? Math.min(item.unique / item.registered * 100, 100) : 0;
+      const color = RING_COLORS[i % RING_COLORS.length];
+      const offset = CIRC - (CIRC * pct / 100);
+
+      const card = document.createElement('div');
+      card.className = 'ring-card fade-in delay-' + Math.min(i + 1, 5);
+      card.innerHTML = `
+        <div class="ring-wrap">
+          <svg viewBox="0 0 80 80">
+            <circle class="ring-track" cx="40" cy="40" r="33"/>
+            <circle class="ring-fill" cx="40" cy="40" r="33"
+              stroke="${color}"
+              stroke-dasharray="${CIRC}"
+              stroke-dashoffset="${offset}"/>
+          </svg>
+          <div class="ring-center">
+            <span class="ring-pct">${hasReg ? Math.round(pct) + '%' : item.unique}</span>
+            <span class="ring-count">${item.unique}/${item.registered || '?'}</span>
+          </div>
+        </div>
+        <div class="ring-label" title="${item.name}">${item.name}</div>`;
+      container.appendChild(card);
+    });
+  }
+
+  function renderTimeline(container, timeline) {
+    container.innerHTML = '';
+    if (!timeline || timeline.length === 0) {
+      container.style.display = 'none';
+      $('timelineEmpty').style.display = 'block';
+      return;
+    }
+    container.style.display = '';
+    $('timelineEmpty').style.display = 'none';
+
+    const maxScans = timeline.reduce((m, t) => Math.max(m, t.scans), 0);
+    timeline.forEach((bucket, i) => {
+      const pct = maxScans > 0 ? (bucket.scans / maxScans * 100) : 0;
+      const t = new Date(bucket.time);
+      const label = t.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+
+      const wrap = document.createElement('div');
+      wrap.className = 'timeline-bar-wrap';
+      // Show time label every other bar, or first/last
+      const showLabel = i === 0 || i === timeline.length - 1 || i % 2 === 0;
+      wrap.innerHTML = `
+        <div class="timeline-bar-area">
+          <div class="timeline-bar" style="height:${Math.max(pct, 2)}%" data-count="${bucket.scans} scans"></div>
+        </div>
+        <span class="timeline-time">${showLabel ? label : ''}</span>`;
+      container.appendChild(wrap);
+    });
+  }
+
   function update(data) {
     lastData = data;
 
@@ -696,6 +932,9 @@ html.light .error-banner {
     $('heroTotalScans').textContent = totalScans.toLocaleString();
     $('heroRegistered').textContent = totalReg.toLocaleString();
 
+    // Timeline chart
+    renderTimeline($('timelineChart'), data.timeline || []);
+
     // Stations (merged with status)
     const stations = data.stations || [];
     const maxStation = stations.reduce((m, s) => Math.max(m, s.unique), 0);
@@ -705,11 +944,16 @@ html.light .error-banner {
 
     // Business units
     const bus = data.business_units || [];
-    // When registered counts are present use them as the bar denominator per row;
-    // otherwise fall back to the cross-row maximum.
     const maxBU = bus.reduce((m, b) => Math.max(m, b.unique), 0);
-    $('buCount').textContent = bus.length + (bus.length === 1 ? ' unit' : ' units');
+    const buLabel = bus.length + (bus.length === 1 ? ' unit' : ' units');
+    $('buCount').textContent = buLabel;
+    $('buCount2').textContent = buLabel;
     $('buEmpty').style.display = bus.length ? 'none' : 'block';
+
+    // Ring charts (visual BU breakdown)
+    renderRings($('buRings'), bus);
+
+    // Bar rows (detailed BU list)
     renderRows($('buList'), bus, maxBU, true);
 
     // Footer
