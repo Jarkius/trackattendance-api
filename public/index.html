@@ -683,15 +683,6 @@ html.light .error-banner {
 
   <div class="section fade-in delay-1">
     <div class="section-header">
-      <span class="section-title">Scan Activity</span>
-      <span class="section-count" id="timelineLabel">10-min intervals</span>
-    </div>
-    <div id="timelineChart" class="timeline-chart"></div>
-    <div class="timeline-empty" id="timelineEmpty" style="display:none">No scan activity yet</div>
-  </div>
-
-  <div class="section fade-in delay-2">
-    <div class="section-header">
       <span class="section-title">Business Units</span>
       <span class="section-count" id="buCount">0</span>
     </div>
@@ -702,26 +693,25 @@ html.light .error-banner {
     </div>
   </div>
 
-  <div class="sections-grid">
-    <div class="section fade-in delay-3">
-      <div class="section-header">
-        <span class="section-title">Business Units</span>
-        <span class="section-count" id="buCount2">0</span>
-      </div>
-      <div id="buList"></div>
+  <div class="section fade-in delay-2">
+    <div class="section-header">
+      <span class="section-title">Stations</span>
+      <span class="section-count" id="stationCount">0</span>
     </div>
+    <div id="stationList"></div>
+    <div class="empty" id="stationEmpty" style="display:none">
+      <div class="empty-icon">&#9723;</div>
+      No station data yet
+    </div>
+  </div>
 
-    <div class="section fade-in delay-4">
-      <div class="section-header">
-        <span class="section-title">Stations</span>
-        <span class="section-count" id="stationCount">0</span>
-      </div>
-      <div id="stationList"></div>
-      <div class="empty" id="stationEmpty" style="display:none">
-        <div class="empty-icon">&#9723;</div>
-        No station data yet
-      </div>
+  <div class="section fade-in delay-3">
+    <div class="section-header">
+      <span class="section-title">Scan Activity</span>
+      <span class="section-count" id="timelineLabel">10-min intervals</span>
     </div>
+    <div id="timelineChart" class="timeline-chart"></div>
+    <div class="timeline-empty" id="timelineEmpty" style="display:none">No scan activity yet</div>
   </div>
 
 
@@ -945,16 +935,11 @@ html.light .error-banner {
     // Business units
     const bus = data.business_units || [];
     const maxBU = bus.reduce((m, b) => Math.max(m, b.unique), 0);
-    const buLabel = bus.length + (bus.length === 1 ? ' unit' : ' units');
-    $('buCount').textContent = buLabel;
-    $('buCount2').textContent = buLabel;
+    $('buCount').textContent = bus.length + (bus.length === 1 ? ' unit' : ' units');
     $('buEmpty').style.display = bus.length ? 'none' : 'block';
 
     // Ring charts (visual BU breakdown)
     renderRings($('buRings'), bus);
-
-    // Bar rows (detailed BU list)
-    renderRows($('buList'), bus, maxBU, true);
 
     // Footer
     const ts = data.timestamp ? new Date(data.timestamp) : new Date();
