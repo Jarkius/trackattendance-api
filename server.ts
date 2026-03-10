@@ -558,6 +558,17 @@ app.get("/v1/dashboard/public/stats", {
       ORDER BY CASE WHEN COALESCE(s.bu, r.business_unit, 'Unmatched') = 'Unmatched' THEN 1 ELSE 0 END, COALESCE(s.bu, r.business_unit, 'Unmatched') ASC
     `);
 
+    // Scan timeline: 10-minute buckets for the last 3 hours
+    const timelineResult = await client.query(`
+      SELECT
+        date_trunc('hour', scanned_at) + INTERVAL '10 min' * FLOOR(EXTRACT(MINUTE FROM scanned_at) / 10) as bucket,
+        COUNT(*) as scans
+      FROM scans
+      WHERE scanned_at >= NOW() - INTERVAL '3 hours'
+      GROUP BY bucket
+      ORDER BY bucket ASC
+    `);
+
     const summary = summaryResult.rows[0];
 
     const buRows = buResult.rows.map(row => ({
@@ -577,6 +588,10 @@ app.get("/v1/dashboard/public/stats", {
         unique: parseInt(row.unique_badges),
       })),
       business_units: buRows,
+      timeline: timelineResult.rows.map(row => ({
+        time: new Date(row.bucket).toISOString(),
+        scans: parseInt(row.scans),
+      })),
       timestamp: new Date().toISOString(),
     };
   } catch (e: any) {
