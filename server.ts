@@ -827,6 +827,52 @@ app.post("/v1/stations/heartbeat", async (req, reply) => {
   }
 });
 
+// PUT /v1/stations/rename — rename a station across all scans and heartbeat
+app.put("/v1/stations/rename", async (req, reply) => {
+  const body = req.body as any;
+  const old_name = body?.old_name?.trim();
+  const new_name = body?.new_name?.trim();
+  if (!old_name || !new_name) {
+    reply.code(400);
+    return { error: "Missing old_name or new_name" };
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const scansResult = await client.query(
+      "UPDATE scans SET station_name = $1 WHERE station_name = $2",
+      [new_name, old_name]
+    );
+    await client.query(
+      `INSERT INTO station_heartbeat (station_name, last_seen_at)
+       VALUES ($1, NOW())
+       ON CONFLICT (station_name) DO NOTHING`,
+      [new_name]
+    );
+    // Merge old heartbeat into new if old exists
+    await client.query(
+      `UPDATE station_heartbeat SET
+         local_scan_count = COALESCE((SELECT local_scan_count FROM station_heartbeat WHERE station_name = $2), 0),
+         last_clear_epoch = COALESCE((SELECT last_clear_epoch FROM station_heartbeat WHERE station_name = $2), last_clear_epoch),
+         last_seen_at = NOW()
+       WHERE station_name = $1`,
+      [new_name, old_name]
+    );
+    await client.query("DELETE FROM station_heartbeat WHERE station_name = $1", [old_name]);
+    await client.query("COMMIT");
+    app.log.info(`Station renamed: '${old_name}' → '${new_name}' (${scansResult.rowCount} scans updated)`);
+    return { ok: true, scans_updated: scansResult.rowCount };
+  } catch (e: any) {
+    await client.query("ROLLBACK");
+    app.log.error({ err: e }, "Station rename failed");
+    reply.code(500);
+    return { ok: false, error: e.message };
+  } finally {
+    client.release();
+  }
+});
+
 // GET /v1/stations/status — public: all station statuses (for admin panel + mobile dashboard)
 app.get("/v1/stations/status", {
   config: { rateLimit: { max: PUBLIC_RATE_LIMIT_MAX, timeWindow: RATE_LIMIT_WINDOW } }
