@@ -558,15 +558,27 @@ app.get("/v1/dashboard/public/stats", {
       ORDER BY CASE WHEN COALESCE(s.bu, r.business_unit, 'Unmatched') = 'Unmatched' THEN 1 ELSE 0 END, COALESCE(s.bu, r.business_unit, 'Unmatched') ASC
     `);
 
-    // Scan timeline: 10-minute buckets for the last 3 hours
+    // Scan timeline: 10-minute buckets for the last 3 hours (with gap-filling)
     const timelineResult = await client.query(`
-      SELECT
-        date_trunc('hour', scanned_at) + INTERVAL '10 min' * FLOOR(EXTRACT(MINUTE FROM scanned_at) / 10) as bucket,
-        COUNT(*) as scans
-      FROM scans
-      WHERE scanned_at >= NOW() - INTERVAL '3 hours'
-      GROUP BY bucket
-      ORDER BY bucket ASC
+      WITH buckets AS (
+        SELECT generate_series(
+          date_trunc('hour', NOW() - INTERVAL '3 hours') + INTERVAL '10 min' * FLOOR(EXTRACT(MINUTE FROM NOW() - INTERVAL '3 hours') / 10),
+          NOW(),
+          INTERVAL '10 minutes'
+        ) AS bucket
+      ),
+      scan_counts AS (
+        SELECT
+          date_trunc('hour', scanned_at) + INTERVAL '10 min' * FLOOR(EXTRACT(MINUTE FROM scanned_at) / 10) AS bucket,
+          COUNT(*) AS scans
+        FROM scans
+        WHERE scanned_at >= NOW() - INTERVAL '3 hours'
+        GROUP BY 1
+      )
+      SELECT b.bucket, COALESCE(s.scans, 0) AS scans
+      FROM buckets b
+      LEFT JOIN scan_counts s ON b.bucket = s.bucket
+      ORDER BY b.bucket ASC
     `);
 
     const summary = summaryResult.rows[0];

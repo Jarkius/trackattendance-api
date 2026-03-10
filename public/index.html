@@ -845,6 +845,12 @@ html.light .error-banner {
     '#FF9800', '#E91E63', '#607D8B', '#795548', '#CDDC39',
   ];
 
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
   function renderRings(container, items) {
     container.innerHTML = '';
     const CIRC = 2 * Math.PI * 33; // radius=33
@@ -871,7 +877,7 @@ html.light .error-banner {
             <span class="ring-count">${item.unique}/${item.registered || '?'}</span>
           </div>
         </div>
-        <div class="ring-label" title="${displayName}">${displayName}</div>`;
+        <div class="ring-label" title="${escapeHtml(displayName)}">${escapeHtml(displayName)}</div>`;
       container.appendChild(card);
     });
   }
