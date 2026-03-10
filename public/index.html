@@ -849,7 +849,7 @@ html.light .error-banner {
     container.innerHTML = '';
     const CIRC = 2 * Math.PI * 33; // radius=33
     items.forEach((item, i) => {
-      if (item.name === 'Unknown' || item.name === 'Unmatched') return;
+      const displayName = (item.name === 'Unknown' || item.name === 'Unmatched') ? '(Unmatched)' : item.name;
       const hasReg = item.registered > 0;
       const pct = hasReg ? Math.min(item.unique / item.registered * 100, 100) : 0;
       const color = RING_COLORS[i % RING_COLORS.length];
@@ -871,7 +871,7 @@ html.light .error-banner {
             <span class="ring-count">${item.unique}/${item.registered || '?'}</span>
           </div>
         </div>
-        <div class="ring-label" title="${item.name}">${item.name}</div>`;
+        <div class="ring-label" title="${displayName}">${displayName}</div>`;
       container.appendChild(card);
     });
   }
