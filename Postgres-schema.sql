@@ -13,10 +13,12 @@ create table if not exists scans (
 );
 
 -- indexes for performance
-create index if not exists idx_scans_badge_id       on scans (badge_id);
-create index if not exists idx_scans_station_name   on scans (station_name);
-create index if not exists idx_scans_scanned_at     on scans (scanned_at);
-create index if not exists idx_scans_business_unit  on scans (business_unit);
+create index if not exists idx_scans_badge_id             on scans (badge_id);
+create index if not exists idx_scans_station_name         on scans (station_name);
+create index if not exists idx_scans_scanned_at           on scans (scanned_at desc);
+create index if not exists idx_scans_business_unit        on scans (business_unit);
+create index if not exists idx_scans_badge_station_time   on scans (badge_id, station_name, scanned_at desc);
+create index if not exists idx_scans_station_scanned_at   on scans (station_name, scanned_at desc);
 
 -- roster summary: registered headcount per business unit (full-replace on each upload)
 create table if not exists roster_summary (

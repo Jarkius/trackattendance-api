@@ -23,9 +23,9 @@ const app = Fastify({
 // ---- database pool ----
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
+  max: 50,              // Support 10+ stations + dashboard polling concurrently
+  idleTimeoutMillis: 60000,
+  connectionTimeoutMillis: 5000,  // Fail faster to allow client retry
 });
 
 pool.on('error', (err) => {
@@ -131,6 +131,13 @@ try {
         local_scan_count  INTEGER NOT NULL DEFAULT 0,
         last_seen_at      TIMESTAMPTZ NOT NULL DEFAULT now()
       )
+    `);
+    // Composite indexes for live event performance (10+ stations)
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_scans_badge_station_time ON scans (badge_id, station_name, scanned_at DESC)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_scans_station_scanned_at ON scans (station_name, scanned_at DESC)
     `);
     app.log.info("Database migration check complete");
   } finally {
@@ -501,14 +508,20 @@ app.get("/v1/dashboard/stats", async (req, reply) => {
     `);
 
     const buResult = await client.query(`
+      WITH scan_bu AS (
+        SELECT COALESCE(business_unit, 'Unmatched') AS bu,
+               COUNT(DISTINCT badge_id) AS unique_badges
+        FROM scans
+        GROUP BY COALESCE(business_unit, 'Unmatched')
+      )
       SELECT
-        COALESCE(s.bu, r.business_unit, 'Unmatched') as business_unit,
-        COALESCE(r.registered, 0) as registered,
-        COUNT(DISTINCT s.badge_id) as unique_badges
-      FROM (SELECT *, COALESCE(business_unit, 'Unmatched') as bu FROM scans) s
+        COALESCE(s.bu, r.business_unit, 'Unmatched') AS business_unit,
+        COALESCE(r.registered, 0) AS registered,
+        COALESCE(s.unique_badges, 0) AS unique_badges
+      FROM scan_bu s
       FULL OUTER JOIN roster_summary r ON s.bu = r.business_unit
-      GROUP BY COALESCE(s.bu, r.business_unit, 'Unmatched'), r.registered
-      ORDER BY CASE WHEN COALESCE(s.bu, r.business_unit, 'Unmatched') = 'Unmatched' THEN 1 ELSE 0 END, COALESCE(s.bu, r.business_unit, 'Unmatched') ASC
+      ORDER BY CASE WHEN COALESCE(s.bu, r.business_unit, 'Unmatched') = 'Unmatched' THEN 1 ELSE 0 END,
+               COALESCE(s.bu, r.business_unit, 'Unmatched') ASC
     `);
 
     const summary = summaryResult.rows[0];
@@ -569,14 +582,20 @@ app.get("/v1/dashboard/public/stats", {
     `);
 
     const buResult = await client.query(`
+      WITH scan_bu AS (
+        SELECT COALESCE(business_unit, 'Unmatched') AS bu,
+               COUNT(DISTINCT badge_id) AS unique_badges
+        FROM scans
+        GROUP BY COALESCE(business_unit, 'Unmatched')
+      )
       SELECT
-        COALESCE(s.bu, r.business_unit, 'Unmatched') as business_unit,
-        COALESCE(r.registered, 0) as registered,
-        COUNT(DISTINCT s.badge_id) as unique_badges
-      FROM (SELECT *, COALESCE(business_unit, 'Unmatched') as bu FROM scans) s
+        COALESCE(s.bu, r.business_unit, 'Unmatched') AS business_unit,
+        COALESCE(r.registered, 0) AS registered,
+        COALESCE(s.unique_badges, 0) AS unique_badges
+      FROM scan_bu s
       FULL OUTER JOIN roster_summary r ON s.bu = r.business_unit
-      GROUP BY COALESCE(s.bu, r.business_unit, 'Unmatched'), r.registered
-      ORDER BY CASE WHEN COALESCE(s.bu, r.business_unit, 'Unmatched') = 'Unmatched' THEN 1 ELSE 0 END, COALESCE(s.bu, r.business_unit, 'Unmatched') ASC
+      ORDER BY CASE WHEN COALESCE(s.bu, r.business_unit, 'Unmatched') = 'Unmatched' THEN 1 ELSE 0 END,
+               COALESCE(s.bu, r.business_unit, 'Unmatched') ASC
     `);
 
     // Scan timeline: 10-minute buckets for the last 3 hours (with gap-filling)
