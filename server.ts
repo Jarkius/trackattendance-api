@@ -991,6 +991,52 @@ app.get("/v1/stations/status", {
   }
 });
 
+// GET /v1/scans/check-duplicate — cross-station duplicate check (Live Sync)
+app.get("/v1/scans/check-duplicate", async (req, reply) => {
+  const { badge_id, window_minutes, exclude_station } = req.query as {
+    badge_id?: string;
+    window_minutes?: string;
+    exclude_station?: string;
+  };
+
+  if (!badge_id || !badge_id.trim()) {
+    reply.code(400);
+    return { error: "badge_id is required" };
+  }
+
+  const windowMin = Math.max(1, Math.min(60, parseInt(window_minutes || "5") || 5));
+
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      `SELECT station_name, scanned_at
+       FROM scans
+       WHERE badge_id = $1
+         AND scanned_at >= NOW() - make_interval(mins => $2)
+         AND ($3::text IS NULL OR station_name != $3)
+       ORDER BY scanned_at DESC
+       LIMIT 1`,
+      [badge_id.trim(), windowMin, exclude_station?.trim() || null]
+    );
+
+    if (result.rows.length > 0) {
+      return {
+        duplicate: true,
+        badge_id: badge_id.trim(),
+        station_name: result.rows[0].station_name,
+        scanned_at: result.rows[0].scanned_at,
+      };
+    }
+    return { duplicate: false };
+  } catch (e: any) {
+    app.log.error({ err: e }, "Duplicate check query failed");
+    reply.code(500);
+    return { error: "Duplicate check failed" };
+  } finally {
+    client.release();
+  }
+});
+
 // ---- graceful shutdown ----
 const shutdown = async () => {
   app.log.info("Shutting down gracefully...");
