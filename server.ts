@@ -17,7 +17,11 @@ if (!process.env.API_KEY) {
 
 const app = Fastify({
   logger: true,
-  requestTimeout: 30000
+  requestTimeout: 30000,
+  // Cloud Run terminates TLS and proxies directly to the container, setting
+  // X-Forwarded-For with the real client IP — trust it so req.ip (used by the
+  // rate limiter's keyGenerator) reflects the actual client, not Cloud Run's proxy.
+  trustProxy: true,
 });
 
 // ---- database pool ----
@@ -214,12 +218,25 @@ app.get("/", { config: { rateLimit: false } }, async () => {
 });
 
 // ---- auth middleware ----
+// IMPORTANT: gate on the *resolved route pattern* (req.routeOptions.url), not the raw
+// req.url string. Fastify's router normalizes "../" segments when matching a route,
+// so a raw-string prefix check (e.g. req.url.startsWith("/v1/dashboard/public")) can be
+// bypassed with something like "/v1/dashboard/public/../../admin/clear-scans" — the
+// prefix check passes on the raw string while the router resolves it to the admin route.
+const PUBLIC_ROUTES = new Set([
+  "/healthz",
+  "/",
+  "/v1/dashboard/public/stats",
+  "/v1/dashboard/public/config",
+  "/v1/stations/status",
+]);
+
 app.addHook("onRequest", async (req, reply) => {
-  // Bypass authentication for health checks and public endpoints
-  if (req.url === "/healthz" || req.url === "/") return;
-  if (req.url.startsWith("/v1/dashboard/public")) return;
-  if (req.url.startsWith("/v1/stations/status")) return;
-  if (req.url.startsWith("/dashboard/")) return;
+  const routePattern = req.routeOptions?.url;
+  const isPublic =
+    (routePattern && PUBLIC_ROUTES.has(routePattern)) ||
+    (routePattern && routePattern.startsWith("/dashboard/"));
+  if (isPublic) return;
 
   const auth = req.headers.authorization || "";
   const token = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7) : "";

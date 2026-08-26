@@ -806,70 +806,6 @@ html.light .error-banner {
     tick();
   }
 
-  function formatAgo(s) {
-    if (s < 60) return s + 's ago';
-    if (s < 3600) return Math.floor(s / 60) + 'm ago';
-    return Math.floor(s / 3600) + 'h ago';
-  }
-
-  function renderRows(container, items, maxValue, useRegistered, statusMap) {
-    const existing = container.children;
-    items.forEach((item, i) => {
-      const hasReg = useRegistered && item.registered > 0;
-      const barMax = hasReg ? item.registered : maxValue;
-      const pct = barMax > 0 ? Math.min(item.unique / barMax * 100, 100) : 0;
-      let row = existing[i];
-      if (!row) {
-        row = document.createElement('div');
-        row.className = 'stat-row fade-in delay-' + Math.min(i + 1, 5);
-        row.innerHTML = `
-          <div class="stat-row-top">
-            <div class="stat-name"></div>
-            <div class="stat-value"></div>
-          </div>
-          <div class="stat-bar-track">
-            <div class="stat-bar-fill"></div>
-          </div>`;
-        container.appendChild(row);
-      }
-      const nameEl = row.querySelector('.stat-name');
-      const displayName = (item.name === 'Unknown' ? '(Unmatched)' : item.name) || '(Unmatched)';
-      const st = statusMap && statusMap[item.name];
-      if (st) {
-        var statusText = st.status === 'pending' ? 'Clearing...' :
-          st.status === 'offline' ? 'Offline' : formatAgo(st.seconds_ago);
-        nameEl.innerHTML = '<span class="status-dot ' + st.status + '"></span>' +
-          displayName + '<span class="stat-status">' + statusText + '</span>';
-      } else {
-        nameEl.textContent = displayName;
-      }
-      const valEl = row.querySelector('.stat-value');
-      if (hasReg) {
-        valEl.classList.add('has-registered');
-        valEl.innerHTML = item.unique.toLocaleString() +
-          ' <span class="stat-registered">/ ' + item.registered.toLocaleString() + '</span>';
-        // Percentage label — create or reuse
-        let pctEl = row.querySelector('.stat-pct');
-        if (!pctEl) {
-          pctEl = document.createElement('div');
-          pctEl.className = 'stat-pct';
-          row.appendChild(pctEl);
-        }
-        pctEl.textContent = Math.round(pct) + '%';
-      } else {
-        valEl.classList.remove('has-registered');
-        valEl.textContent = item.unique.toLocaleString();
-        const pctEl = row.querySelector('.stat-pct');
-        if (pctEl) pctEl.remove();
-      }
-      row.querySelector('.stat-bar-fill').style.width = Math.max(pct, 1) + '%';
-    });
-    // Remove extra rows
-    while (container.children.length > items.length) {
-      container.removeChild(container.lastChild);
-    }
-  }
-
   // Ring chart color palette
   const RING_COLORS = [
     '#86BC25', '#4CAF50', '#00BCD4', '#2196F3', '#9C27B0',
@@ -879,7 +815,7 @@ html.light .error-banner {
   function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;
-    return div.innerHTML;
+    return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
   function renderRings(container, items) {
