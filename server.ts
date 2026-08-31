@@ -1023,8 +1023,16 @@ app.get("/v1/scans/check-duplicate", async (req, reply) => {
 
   const windowMin = Math.max(1, Math.min(60, parseInt(window_minutes || "5") || 5));
 
+  // Split timing into connection-acquisition vs. query-execution — a live
+  // 2-station test showed the client-side round trip occasionally exceed
+  // its timeout with no server-side trace of why. Distinguishing the two
+  // tells us whether a slow request is pool/cold-start contention (connect
+  // phase) or the query itself (query phase) rather than guessing.
+  const requestStart = Date.now();
   const client = await pool.connect();
+  const connectMs = Date.now() - requestStart;
   try {
+    const queryStart = Date.now();
     const result = await client.query(
       `SELECT station_name, scanned_at
        FROM scans
@@ -1035,8 +1043,17 @@ app.get("/v1/scans/check-duplicate", async (req, reply) => {
        LIMIT 1`,
       [badge_id.trim(), windowMin, exclude_station?.trim() || null]
     );
+    const queryMs = Date.now() - queryStart;
+    const totalMs = Date.now() - requestStart;
+    const duplicate = result.rows.length > 0;
 
-    if (result.rows.length > 0) {
+    const logFn = totalMs >= 1000 ? app.log.warn.bind(app.log) : app.log.info.bind(app.log);
+    logFn(
+      { badge_id: badge_id.trim(), connect_ms: connectMs, query_ms: queryMs, total_ms: totalMs, duplicate },
+      "Duplicate check completed"
+    );
+
+    if (duplicate) {
       return {
         duplicate: true,
         badge_id: badge_id.trim(),
@@ -1046,7 +1063,7 @@ app.get("/v1/scans/check-duplicate", async (req, reply) => {
     }
     return { duplicate: false };
   } catch (e: any) {
-    app.log.error({ err: e }, "Duplicate check query failed");
+    app.log.error({ err: e, connect_ms: connectMs }, "Duplicate check query failed");
     reply.code(500);
     return { error: "Duplicate check failed" };
   } finally {
