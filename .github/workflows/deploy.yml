@@ -9,6 +9,11 @@ env:
   REGION: asia-southeast1
   SERVICE: trackattendance-api
   IMAGE: asia-southeast1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/cloud-run-source-deploy/trackattendance-api
+  # Per-IP rate limits (requests/minute). Raised from the code's defaults
+  # (60 / 30) to handle 10+ kiosk stations sharing one office egress IP with
+  # Live Sync enabled (2 API calls per scan) plus mobile dashboard polling.
+  RATE_LIMIT_MAX: "300"
+  PUBLIC_RATE_LIMIT_MAX: "120"
 
 jobs:
   deploy:
@@ -56,6 +61,7 @@ jobs:
             --image ${{ env.IMAGE }}:${{ github.sha }} \
             --region ${{ env.REGION }} \
             --platform managed \
+            --update-env-vars RATE_LIMIT_MAX=${{ env.RATE_LIMIT_MAX }},PUBLIC_RATE_LIMIT_MAX=${{ env.PUBLIC_RATE_LIMIT_MAX }} \
             --quiet
 
       - name: Verify deployment
