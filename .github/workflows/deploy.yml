@@ -12,7 +12,11 @@ env:
   # Per-IP rate limits (requests/minute). Raised from the code's defaults
   # (60 / 30) to handle 10+ kiosk stations sharing one office egress IP with
   # Live Sync enabled (2 API calls per scan) plus mobile dashboard polling.
-  RATE_LIMIT_MAX: "300"
+  # Bumped 300->600 for a 1800-participant event with 15 stations and a
+  # 14:00-15:15 check-in window: worst-case first-10-minutes rush is
+  # ~1800/10min x 2 calls (check-duplicate + batch) = 360 req/min, so 600
+  # keeps ~1.7x headroom over that burst instead of exceeding the old 300 cap.
+  RATE_LIMIT_MAX: "600"
   PUBLIC_RATE_LIMIT_MAX: "120"
 
 jobs:
