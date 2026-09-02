@@ -219,10 +219,6 @@ curl -X POST https://trackattendance-api-969370105809.asia-southeast1.run.app/v1
 
 See `SESSION-NOTES.md` for detailed development documentation and deployment strategy.
 
-## Planned: Licensing & Multi-Tenant Support
-
-Per-client API keys with station limits, Stripe subscription management, and license enforcement via heartbeat response. See [Commercialization Plan](../PLAN-commercialize.md) for full architecture.
-
 ## Contributing
 Follow `AGENTS.md` for coding standards, commit style, and pull-request checklists. Merge changes only after verifying local runs and documenting new configuration.
 
