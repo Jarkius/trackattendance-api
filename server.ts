@@ -511,11 +511,11 @@ app.get("/v1/dashboard/stats", async (req, reply) => {
         COUNT(*) as total_scans,
         COUNT(DISTINCT badge_id) as unique_badges,
         COUNT(DISTINCT COALESCE(NULLIF(meta->>'legacy_id',''), badge_id))
-          FILTER (WHERE business_unit IS NOT NULL) as matched_unique,
+          FILTER (WHERE business_unit IS NOT NULL OR meta->>'matched' = 'true') as matched_unique,
         COUNT(DISTINCT lower(regexp_replace(btrim(badge_id), '\\s+', ' ', 'g')))
-          FILTER (WHERE business_unit IS NULL AND scan_source = 'manual') as walkin_unique,
+          FILTER (WHERE business_unit IS NULL AND COALESCE(meta->>'matched','') <> 'true' AND scan_source = 'manual') as walkin_unique,
         COUNT(DISTINCT badge_id)
-          FILTER (WHERE business_unit IS NULL AND COALESCE(scan_source,'') <> 'manual') as unknown_badge_unique
+          FILTER (WHERE business_unit IS NULL AND COALESCE(meta->>'matched','') <> 'true' AND COALESCE(scan_source,'') <> 'manual') as unknown_badge_unique
       FROM scans
     `);
 
@@ -596,11 +596,11 @@ app.get("/v1/dashboard/public/stats", {
         COUNT(*) as total_scans,
         COUNT(DISTINCT badge_id) as unique_badges,
         COUNT(DISTINCT COALESCE(NULLIF(meta->>'legacy_id',''), badge_id))
-          FILTER (WHERE business_unit IS NOT NULL) as matched_unique,
+          FILTER (WHERE business_unit IS NOT NULL OR meta->>'matched' = 'true') as matched_unique,
         COUNT(DISTINCT lower(regexp_replace(btrim(badge_id), '\\s+', ' ', 'g')))
-          FILTER (WHERE business_unit IS NULL AND scan_source = 'manual') as walkin_unique,
+          FILTER (WHERE business_unit IS NULL AND COALESCE(meta->>'matched','') <> 'true' AND scan_source = 'manual') as walkin_unique,
         COUNT(DISTINCT badge_id)
-          FILTER (WHERE business_unit IS NULL AND COALESCE(scan_source,'') <> 'manual') as unknown_badge_unique
+          FILTER (WHERE business_unit IS NULL AND COALESCE(meta->>'matched','') <> 'true' AND COALESCE(scan_source,'') <> 'manual') as unknown_badge_unique
       FROM scans
     `);
 
