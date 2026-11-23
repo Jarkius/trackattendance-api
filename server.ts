@@ -509,7 +509,13 @@ app.get("/v1/dashboard/stats", async (req, reply) => {
     const summaryResult = await client.query(`
       SELECT
         COUNT(*) as total_scans,
-        COUNT(DISTINCT badge_id) as unique_badges
+        COUNT(DISTINCT badge_id) as unique_badges,
+        COUNT(DISTINCT COALESCE(NULLIF(meta->>'legacy_id',''), badge_id))
+          FILTER (WHERE business_unit IS NOT NULL) as matched_unique,
+        COUNT(DISTINCT lower(regexp_replace(btrim(badge_id), '\\s+', ' ', 'g')))
+          FILTER (WHERE business_unit IS NULL AND scan_source = 'manual') as walkin_unique,
+        COUNT(DISTINCT badge_id)
+          FILTER (WHERE business_unit IS NULL AND COALESCE(scan_source,'') <> 'manual') as unknown_badge_unique
       FROM scans
     `);
 
@@ -558,6 +564,9 @@ app.get("/v1/dashboard/stats", async (req, reply) => {
     return {
       total_scans: parseInt(summary.total_scans),
       unique_badges: parseInt(summary.unique_badges),
+      matched_unique: parseInt(summary.matched_unique),
+      walkin_unique: parseInt(summary.walkin_unique),
+      unknown_badge_unique: parseInt(summary.unknown_badge_unique),
       stations,
       business_units,
       timestamp: new Date().toISOString(),
@@ -585,7 +594,13 @@ app.get("/v1/dashboard/public/stats", {
     const summaryResult = await client.query(`
       SELECT
         COUNT(*) as total_scans,
-        COUNT(DISTINCT badge_id) as unique_badges
+        COUNT(DISTINCT badge_id) as unique_badges,
+        COUNT(DISTINCT COALESCE(NULLIF(meta->>'legacy_id',''), badge_id))
+          FILTER (WHERE business_unit IS NOT NULL) as matched_unique,
+        COUNT(DISTINCT lower(regexp_replace(btrim(badge_id), '\\s+', ' ', 'g')))
+          FILTER (WHERE business_unit IS NULL AND scan_source = 'manual') as walkin_unique,
+        COUNT(DISTINCT badge_id)
+          FILTER (WHERE business_unit IS NULL AND COALESCE(scan_source,'') <> 'manual') as unknown_badge_unique
       FROM scans
     `);
 
@@ -651,6 +666,9 @@ app.get("/v1/dashboard/public/stats", {
     return {
       total_scans: parseInt(summary.total_scans),
       unique_badges: parseInt(summary.unique_badges),
+      matched_unique: parseInt(summary.matched_unique),
+      walkin_unique: parseInt(summary.walkin_unique),
+      unknown_badge_unique: parseInt(summary.unknown_badge_unique),
       total_registered,
       stations: stationsResult.rows.map(row => ({
         name: row.station_name,

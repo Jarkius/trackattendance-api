@@ -692,6 +692,11 @@ html.light .error-banner {
         <div class="hero-stat-value" id="heroScanned">--</div>
         <div class="hero-stat-label">Unique</div>
       </div>
+      <div class="hero-stat-divider" id="heroWalkinDivider" style="display:none"></div>
+      <div class="hero-stat" id="heroWalkinStat" style="display:none">
+        <div class="hero-stat-value" id="heroWalkin">+0</div>
+        <div class="hero-stat-label">Walk-in</div>
+      </div>
       <div class="hero-stat-divider"></div>
       <div class="hero-stat">
         <div class="hero-stat-value" id="heroTotalScans">--</div>
@@ -905,11 +910,17 @@ html.light .error-banner {
 
     const totalReg = data.total_registered || 0;
     const uniqueBadges = data.unique_badges || 0;
-    const rate = totalReg > 0 ? (uniqueBadges / totalReg * 100) : 0;
+    // Registered attended; falls back to unique_badges on older servers
+    const attended = data.matched_unique !== undefined ? (data.matched_unique || 0) : uniqueBadges;
+    const walkins = data.walkin_unique || 0;
+    const rate = totalReg > 0 ? Math.min(attended / totalReg * 100, 100) : 0;
     const totalScans = data.total_scans || 0;
 
     $('heroRate').textContent = totalReg > 0 ? rate.toFixed(1) + '%' : '--';
-    $('heroScanned').textContent = uniqueBadges.toLocaleString();
+    $('heroScanned').textContent = attended.toLocaleString();
+    $('heroWalkin').textContent = '+' + walkins.toLocaleString();
+    $('heroWalkinStat').style.display = walkins > 0 ? '' : 'none';
+    $('heroWalkinDivider').style.display = walkins > 0 ? '' : 'none';
     $('heroTotalScans').textContent = totalScans.toLocaleString();
     $('heroRegistered').textContent = totalReg.toLocaleString();
 
@@ -920,7 +931,7 @@ html.light .error-banner {
     $('scanRateSub').textContent = totalScans > 0 ? totalScans + ' total' : '';
 
     // Live stats: ETA
-    const remaining = Math.max(totalReg - uniqueBadges, 0);
+    const remaining = Math.max(totalReg - attended, 0);
     const eta = computeETA(remaining, sr.rate);
     $('etaValue').textContent = eta.value;
     $('etaValue').classList.toggle('dim', sr.rate === 0 && remaining > 0);
