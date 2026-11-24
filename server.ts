@@ -231,6 +231,10 @@ const PUBLIC_ROUTES = new Set([
   "/v1/stations/status",
 ]);
 
+// Refusals are routine (bots, browser favicon requests), so reply directly instead of
+// throwing: a thrown error is logged with a stack trace and lands in Error Reporting.
+const UNAUTHORIZED_BODY = { statusCode: 401, error: "Unauthorized", message: "Unauthorized" };
+
 app.addHook("onRequest", async (req, reply) => {
   const routePattern = req.routeOptions?.url;
   const isPublic =
@@ -241,14 +245,12 @@ app.addHook("onRequest", async (req, reply) => {
   const auth = req.headers.authorization || "";
   const token = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7) : "";
   if (!token || !API_KEY) {
-    reply.code(401);
-    throw new Error("Unauthorized");
+    return reply.code(401).send(UNAUTHORIZED_BODY);
   }
   const tokenBuf = Buffer.from(token);
   const keyBuf = Buffer.from(API_KEY);
   if (tokenBuf.length !== keyBuf.length || !crypto.timingSafeEqual(tokenBuf, keyBuf)) {
-    reply.code(401);
-    throw new Error("Unauthorized");
+    return reply.code(401).send(UNAUTHORIZED_BODY);
   }
 });
 

@@ -65,6 +65,9 @@ jobs:
             --image ${{ env.IMAGE }}:${{ github.sha }} \
             --region ${{ env.REGION }} \
             --platform managed \
+            --service-account trackattendance-api-runtime@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com \
+            --min-instances 1 \
+            --max-instances 5 \
             --update-env-vars RATE_LIMIT_MAX=${{ env.RATE_LIMIT_MAX }},PUBLIC_RATE_LIMIT_MAX=${{ env.PUBLIC_RATE_LIMIT_MAX }} \
             --quiet
 
